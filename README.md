@@ -1,5 +1,8 @@
 # Mesh2Distance
-## A simple tool to generate distance fields 3d textures from an .OBJ input 3D mesh
+
+A simple tool to generate distance fields 3d textures from an .OBJ input 3D mesh
+
+---
 
 All the options that should be available to the user:
 - Mirror modes, for each axis:

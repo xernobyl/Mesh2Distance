@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // mirror modes
@@ -101,7 +105,30 @@ func main() {
 
 	data, minD, maxD := calculate(distanceSettings, *mesh)
 
-	println("Data:", data)
-	println("MinD:", minD)
-	println("MaxD:", maxD)
+	fmt.Println("Writing files...")
+
+	ext := filepath.Ext(*filePathPtr)
+	pathNoExt := strings.TrimSuffix(*filePathPtr, ext)
+
+	err = os.WriteFile(pathNoExt+".bin", data, 0644)
+	if err != nil {
+		fmt.Println("Error saving file:", err)
+		return
+	}
+
+	jsonData, err := json.MarshalIndent(map[string]any{
+		"min": minD,
+		"max": maxD,
+	}, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+
+	// Write JSON to file
+	err = os.WriteFile(pathNoExt+".json", jsonData, 0644)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("All done. Bye.")
 }
