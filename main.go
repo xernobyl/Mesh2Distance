@@ -26,7 +26,7 @@ const (
 	convertionOptionsMirrorZNegative      = 1 << 8
 
 	convertionOptions16bits = 1 << 9  // 16 bits output, 8 bits otherwise
-	convertionOptionsLog    = 1 << 10 // Output logaritmic, linear otherwise
+	convertionOptionsSquare = 1 << 10 // Output quadratic, linear otherwise
 )
 
 type distanceSettings struct {
@@ -57,7 +57,7 @@ func main() {
 	// - Mirror mode
 	// - Output type
 	// - Output resolution
-	// - Logaritmic
+	// - Quadratic or linear output
 
 	outputTypePtr := flag.Int("outputtype", 8, "Output type, 8 or 16 bits")
 	outputResolutionPtr := flag.String("outputresolution", "32x32x32", "Output resolution WIDTHxHEIGHTxDEPTH")

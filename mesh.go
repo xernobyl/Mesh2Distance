@@ -224,15 +224,27 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 	for i, v := range data {
 		negative := v < 0.0
 
-		if settings.convertionOptions&convertionOptionsLog == convertionOptionsLog {
-			if negative {
-				v = math32.Log(-v+1.0) / math32.Log(-minD+1.0)
-			} else {
-				v = math32.Log(v+1.0) / math32.Log(maxD+1.0)
-			}
+		if settings.convertionOptions&convertionOptionsSquare == convertionOptionsSquare {
+			zero := -minD / (maxD - minD) // zero point in [0, 1]
 
-			// normalize to [0, 1]
-			v = v*0.5 + 0.5
+			// maybe I should store the zero explicitly in the data
+			// however the probability of a distance being exactly zero is very low
+			// so let's just keep this here for now
+
+			// f(minD) = 0.0
+			// f(maxD) = 1.0
+
+			// f⁻¹(0.0) = minD
+			// f⁻¹(zero) = 0.0
+			// f⁻¹(1.0) = maxD
+
+			if v == 0.0 {
+				v = zero
+			} else if negative {
+				v = zero - math32.Sqrt(-v)*zero/math32.Sqrt(-minD)
+			} else {
+				v = zero + math32.Sqrt(v*zero*zero-2.0*v*zero+v)/math32.Sqrt(maxD)
+			}
 		} else {
 			// linear, normalize to [0, 1]
 			v = (v - minD) / (maxD - minD)
