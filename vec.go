@@ -4,6 +4,8 @@ A simple math vector library... New functions added as needed.
 
 package main
 
+import "github.com/chewxy/math32"
+
 type Vec3 [3]float32
 
 func Add(a, b Vec3) Vec3 {
@@ -44,6 +46,11 @@ func Sign(a float32) float32 {
 	}
 
 	return 0.0
+}
+
+func Normalize(a Vec3) Vec3 {
+	l := math32.Sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2])
+	return Vec3{a[0] / l, a[1] / l, a[2] / l}
 }
 
 func Clamp(v, min, max float32) float32 {

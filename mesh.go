@@ -4,10 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
-	"unsafe"
 
 	"github.com/chewxy/math32"
 )
@@ -100,18 +98,25 @@ func distance(p, a, b, c Vec3) float32 {
 	pb := Sub(p, b)
 	ac := Sub(a, c)
 	pc := Sub(p, c)
-	nor := Cross(ba, ac)
+	n := Cross(ba, ac)
 
-	if Sign(Dot(Cross(ba, nor), pa))+
-		Sign(Dot(Cross(cb, nor), pa))+
-		Sign(Dot(Cross(ac, nor), pa)) < 2.0 {
-		return math32.Sqrt(Min3(
+	var sign float32
+	if t := Dot(n, pa); t >= 0.0 {
+		sign = 1.0
+	} else {
+		sign = -1.0
+	}
+
+	if Sign(Dot(Cross(ba, n), pa))+
+		Sign(Dot(Cross(cb, n), pa))+
+		Sign(Dot(Cross(ac, n), pa)) < 2.0 {
+		return sign * math32.Sqrt(Min3(
 			Dot2(Sub(Scale(ba, Saturate(Dot(ba, pa)/Dot2(ba))), pa)),
 			Dot2(Sub(Scale(cb, Saturate(Dot(cb, pb)/Dot2(cb))), pb)),
 			Dot2(Sub(Scale(ac, Saturate(Dot(ac, pc)/Dot2(ac))), pc))))
 	}
 
-	return math32.Sqrt((Dot(nor, pa) * Dot(nor, pa) / Dot2(nor)))
+	return sign * math32.Sqrt((Dot(n, pa) * Dot(n, pa) / Dot2(n)))
 }
 
 /*
@@ -127,19 +132,16 @@ func (mesh Mesh) distance(p Vec3) float32 {
 
 		d := distance(p, v0, v1, v2)
 
-		if d < minDistance {
+		if d == 0 {
+			return 0.0
+		}
+
+		if math32.Abs(d) < math32.Abs(minDistance) {
 			minDistance = d
 		}
 	}
 
 	return minDistance
-}
-
-func uint16SliceAsByteSlice(data []uint16) []byte {
-	header := (*reflect.SliceHeader)(unsafe.Pointer(&data))
-	header.Len *= 2 // Each uint16 has 2 bytes
-	header.Cap *= 2
-	return *(*[]byte)(unsafe.Pointer(header))
 }
 
 /*
@@ -187,13 +189,11 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 
 	printStep := int(width) * int(height) * int(depth) / 100
 
-	fmt.Println("Calculating distance values...")
-
 	for z := uint(0); z < depth; z++ {
 		for y := uint(0); y < height; y++ {
 			for x := uint(0); x < width; x++ {
 				if i%printStep == 0 {
-					fmt.Printf("\r%d%%", i/printStep)
+					fmt.Printf("\rCalculating distance values:\t%d%%", i/printStep)
 				}
 
 				p := Add(Mul(Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
@@ -212,7 +212,7 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 		}
 	}
 
-	fmt.Println("\r100%")
+	fmt.Println("\rCalculating distance values:\t100%")
 
 	// Create buffer of correct type
 	if settings.convertionOptions&convertionOptions16bits == convertionOptions16bits {
@@ -221,7 +221,13 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 		outputData = make([]byte, len(data))
 	}
 
+	printStep = len(data) / 100
+
 	for i, v := range data {
+		if i%printStep == 0 {
+			fmt.Printf("\rConverting data:\t%d%%", i/printStep)
+		}
+
 		negative := v < 0.0
 
 		if settings.convertionOptions&convertionOptionsSquare == convertionOptionsSquare {
@@ -254,9 +260,9 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 		if settings.convertionOptions&convertionOptions16bits == convertionOptions16bits {
 			var t uint16
 			if negative {
-				t = uint16(math32.floor(v * 65535))
+				t = uint16(math32.Floor(v * 65535))
 			} else {
-				t = uint16(math32.ceil(v * 65535))
+				t = uint16(math32.Ceil(v * 65535))
 			}
 
 			// Convert to little endian
@@ -264,12 +270,14 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 			outputData[i*2+1] = byte((t >> 8) & 0xFF)
 		} else {
 			if negative {
-				outputData[i] = uint8(math32.floor(v * 255))
+				outputData[i] = uint8(math32.Floor(v * 255))
 			} else {
-				outputData[i] = uint8(math32.ceil(v * 255))
+				outputData[i] = uint8(math32.Ceil(v * 255))
 			}
 		}
 	}
+
+	fmt.Println("\rConverting data:\t100%")
 
 	return outputData, minD, maxD
 }
