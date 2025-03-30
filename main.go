@@ -143,5 +143,7 @@ func main() {
 		panic(err)
 	}
 
+	Save3DTextureAsDDS(pathNoExt+".dds", data, int(distanceSettings.width), int(distanceSettings.height), int(distanceSettings.depth))
+
 	fmt.Println("All done. Bye.")
 }

@@ -101,10 +101,10 @@ func distance(p, a, b, c Vec3) float32 {
 	n := Cross(ba, ac)
 
 	var sign float32
-	if t := Dot(n, pa); t >= 0.0 {
-		sign = 1.0
-	} else {
+	if t := Dot(n, pa); t > 0.0 {
 		sign = -1.0
+	} else {
+		sign = 1.0
 	}
 
 	if Sign(Dot(Cross(ba, n), pa))+
@@ -260,9 +260,9 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 		if settings.convertionOptions&convertionOptions16bits == convertionOptions16bits {
 			var t uint16
 			if negative {
-				t = uint16(math32.Floor(v * 65535))
+				t = uint16(Max(0.0, Min(math32.Floor(v*65535.0), 65535.0)))
 			} else {
-				t = uint16(math32.Ceil(v * 65535))
+				t = uint16(Max(0.0, Min(math32.Ceil(v*65535.0), 65535.0)))
 			}
 
 			// Convert to little endian
@@ -270,9 +270,9 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 			outputData[i*2+1] = byte((t >> 8) & 0xFF)
 		} else {
 			if negative {
-				outputData[i] = uint8(math32.Floor(v * 255))
+				outputData[i] = uint8(Max(0.0, Min(math32.Floor(v*255), 255.0)))
 			} else {
-				outputData[i] = uint8(math32.Ceil(v * 255))
+				outputData[i] = uint8(Max(0.0, Min(math32.Ceil(v*255), 255.0)))
 			}
 		}
 	}

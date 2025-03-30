@@ -5,11 +5,11 @@ Example of how to unpack a value from the generated a texture
 uniform float min;
 uniform float max;
 
-float unpackLinear(v float) {
+float unpackLinear(float v) {
   return v * (max - min) + min;
 }
 
-float unpackQuad(v float) {
+float unpackQuad(float v) {
   float zero = -min / (max - min);    // zero point in [0, 1]
   
   if (v == zero) {
