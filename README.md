@@ -15,7 +15,6 @@ All the options that should be available to the user:
   - u8 (output includes bias and scale)
   - u16	(output includes bias and scale)
 - Output resolution: eg 256x256x256
-- Quadratic output (more resolution with smaller values)
 
 Output should be a binary blob, and a json file including:
 - Bounding box
@@ -25,6 +24,5 @@ Output should be a binary blob, and a json file including:
 - Mirror mode
 - Output type
 - Output resolution
-- Quadratic or linerar
 
 The error is rounded up when the distance is positive, and down when it's negative.

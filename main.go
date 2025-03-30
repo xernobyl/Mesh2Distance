@@ -25,8 +25,7 @@ const (
 	convertionOptionsMirrorZIncludeCenter = 1 << 7
 	convertionOptionsMirrorZNegative      = 1 << 8
 
-	convertionOptions16bits = 1 << 9  // 16 bits output, 8 bits otherwise
-	convertionOptionsSquare = 1 << 10 // Output quadratic, linear otherwise
+	convertionOptions16bits = 1 << 9 // 16 bits output, 8 bits otherwise
 )
 
 type distanceSettings struct {
@@ -57,12 +56,10 @@ func main() {
 	// - Mirror mode
 	// - Output type
 	// - Output resolution
-	// - Quadratic or linear output
 
 	outputTypePtr := flag.Int("outputtype", 8, "Output type, 8 or 16 bits")
 	outputResolutionPtr := flag.String("outputresolution", "32x32x32", "Output resolution WIDTHxHEIGHTxDEPTH")
 	//mirrorModePtr := flag.String("mirrormode", "", "Mirroring mode for each axis... format to be determined")
-	quadraticPtr := flag.Bool("quadratic", false, "Texture stored as quadratic, linear otherwise")
 	filePathPtr := flag.String("file", "", ".obj file path")
 	flag.Parse()
 
@@ -75,10 +72,6 @@ func main() {
 
 	if *outputTypePtr == 16 {
 		distanceSettings.convertionOptions |= convertionOptions16bits
-	}
-
-	if quadraticPtr != nil && *quadraticPtr == true {
-		distanceSettings.convertionOptions |= convertionOptionsSquare
 	}
 
 	re := regexp.MustCompile(`(\d{1,3})x(\d{1,3})x(\d{1,3})`)
@@ -122,16 +115,15 @@ func main() {
 	}
 
 	jsonData, err := json.MarshalIndent(map[string]any{
-		"distance_min":      minD,
-		"distance_max":      maxD,
-		"texture_width":     distanceSettings.width,
-		"texture_height":    distanceSettings.height,
-		"texture_depth":     distanceSettings.depth,
-		"bounding_box_min":  mesh.Min,
-		"bounding_box_max":  mesh.Max,
-		"texture_data":      pathNoExt + ".bin",
-		"texture_format":    *outputTypePtr,
-		"texture_quadratic": *quadraticPtr,
+		"distance_min":     minD,
+		"distance_max":     maxD,
+		"texture_width":    distanceSettings.width,
+		"texture_height":   distanceSettings.height,
+		"texture_depth":    distanceSettings.depth,
+		"bounding_box_min": mesh.Min,
+		"bounding_box_max": mesh.Max,
+		"texture_data":     pathNoExt + ".bin",
+		"texture_format":   *outputTypePtr,
 	}, "", "  ")
 	if err != nil {
 		panic(err)

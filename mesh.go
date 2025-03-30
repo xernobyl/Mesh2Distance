@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/chewxy/math32"
 )
@@ -153,7 +154,6 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 	depth := uint(settings.depth)
 
 	data := make([]float32, width*height*depth)
-	i := 0
 
 	// Minimum and maximum distance values (for normalization)
 	minD = math32.Inf(1)
@@ -187,32 +187,49 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 	pointScale[2] = (mesh.Max[2] - mesh.Min[2]) / float32(depth-1)
 	pointBias[2] = mesh.Min[2]
 
-	printStep := int(width) * int(height) * int(depth) / 100
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	fmt.Println("Calculating distance field...")
 
 	for z := uint(0); z < depth; z++ {
-		for y := uint(0); y < height; y++ {
-			for x := uint(0); x < width; x++ {
-				if i%printStep == 0 {
-					fmt.Printf("\rCalculating distance values:\t%d%%", i/printStep)
-				}
+		wg.Add(1)
+		go func() {
+			minDi := math32.Inf(1)
+			maxDi := math32.Inf(-1)
 
-				p := Add(Mul(Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
-				d := mesh.distance(p)
-				data[i] = d
-				i += 1
+			for y := uint(0); y < height; y++ {
+				for x := uint(0); x < width; x++ {
+					p := Add(Mul(Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
+					d := mesh.distance(p)
+					data[x+y*width+z*width*height] = d
 
-				if d < minD {
-					minD = d
-				}
+					if d < minDi {
+						minDi = d
+					}
 
-				if d > maxD {
-					maxD = d
+					if d > maxDi {
+						maxDi = d
+					}
 				}
 			}
-		}
+
+			mu.Lock()
+			if minDi < minD {
+				minD = minDi
+			}
+			if maxDi > maxD {
+				maxD = maxDi
+			}
+			mu.Unlock()
+
+			fmt.Printf("finished layer %d out of %d\n", z, depth-1)
+			wg.Done()
+		}()
 	}
 
-	fmt.Println("\rCalculating distance values:\t100%")
+	wg.Wait()
+	fmt.Println("...All done.")
 
 	// Create buffer of correct type
 	if settings.convertionOptions&convertionOptions16bits == convertionOptions16bits {
@@ -221,7 +238,7 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 		outputData = make([]byte, len(data))
 	}
 
-	printStep = len(data) / 100
+	printStep := len(data) / 100
 
 	for i, v := range data {
 		if i%printStep == 0 {
@@ -229,32 +246,7 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 		}
 
 		negative := v < 0.0
-
-		if settings.convertionOptions&convertionOptionsSquare == convertionOptionsSquare {
-			zero := -minD / (maxD - minD) // zero point in [0, 1]
-
-			// maybe I should store the zero explicitly in the data
-			// however the probability of a distance being exactly zero is very low
-			// so let's just keep this here for now
-
-			// f(minD) = 0.0
-			// f(maxD) = 1.0
-
-			// f⁻¹(0.0) = minD
-			// f⁻¹(zero) = 0.0
-			// f⁻¹(1.0) = maxD
-
-			if v == 0.0 {
-				v = zero
-			} else if negative {
-				v = zero - math32.Sqrt(-v)*zero/math32.Sqrt(-minD)
-			} else {
-				v = zero + math32.Sqrt(v*zero*zero-2.0*v*zero+v)/math32.Sqrt(maxD)
-			}
-		} else {
-			// linear, normalize to [0, 1]
-			v = (v - minD) / (maxD - minD)
-		}
+		v = (v - minD) / (maxD - minD) // normalize to [0, 1]
 
 		// Convert to 8 or 16 bits... Rounding up or down depending on the sign of the distance value
 		if settings.convertionOptions&convertionOptions16bits == convertionOptions16bits {
