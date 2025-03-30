@@ -62,6 +62,7 @@ func main() {
 	outputTypePtr := flag.Int("outputtype", 8, "Output type, 8 or 16 bits")
 	outputResolutionPtr := flag.String("outputresolution", "32x32x32", "Output resolution WIDTHxHEIGHTxDEPTH")
 	//mirrorModePtr := flag.String("mirrormode", "", "Mirroring mode for each axis... format to be determined")
+	quadraticPtr := flag.Bool("quadratic", false, "Texture stored as quadratic, linear otherwise")
 	filePathPtr := flag.String("file", "", ".obj file path")
 	flag.Parse()
 
@@ -74,6 +75,10 @@ func main() {
 
 	if *outputTypePtr == 16 {
 		distanceSettings.convertionOptions |= convertionOptions16bits
+	}
+
+	if quadraticPtr != nil && *quadraticPtr == true {
+		distanceSettings.convertionOptions |= convertionOptionsSquare
 	}
 
 	re := regexp.MustCompile(`(\d{1,3})x(\d{1,3})x(\d{1,3})`)
@@ -117,8 +122,16 @@ func main() {
 	}
 
 	jsonData, err := json.MarshalIndent(map[string]any{
-		"min": minD,
-		"max": maxD,
+		"min_distance":      minD,
+		"max_distance":      maxD,
+		"width":             distanceSettings.width,
+		"height":            distanceSettings.height,
+		"depth":             distanceSettings.depth,
+		"bounding_box_min":  mesh.Min,
+		"bounding_box_max":  mesh.Max,
+		"texture_data":      pathNoExt + ".bin",
+		"texture_format":    *outputTypePtr,
+		"texture_quadratic": *quadraticPtr,
 	}, "", "  ")
 	if err != nil {
 		panic(err)

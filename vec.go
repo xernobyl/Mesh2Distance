@@ -77,6 +77,48 @@ func Min(a, b float32) float32 {
 	return b
 }
 
+func Max(a, b float32) float32 {
+	if a > b {
+		return a
+	}
+
+	return b
+}
+
 func Min3(a, b, c float32) float32 {
 	return Min(a, Min(b, c))
+}
+
+func Max3(a, b, c float32) float32 {
+	return Max(a, Max(b, c))
+}
+
+func MinN(nums ...float32) float32 {
+	if len(nums) == 0 {
+		panic("Min requires at least one argument")
+	}
+
+	minValue := nums[0]
+	for _, num := range nums[1:] {
+		if num < minValue {
+			minValue = num
+		}
+	}
+
+	return minValue
+}
+
+func MaxN(nums ...float32) float32 {
+	if len(nums) == 0 {
+		panic("Min requires at least one argument")
+	}
+
+	maxValue := nums[0]
+	for _, num := range nums[1:] {
+		if num > maxValue {
+			maxValue = num
+		}
+	}
+
+	return maxValue
 }
