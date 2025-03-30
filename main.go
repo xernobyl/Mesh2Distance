@@ -50,7 +50,6 @@ func main() {
 
 	// Output should be a binary blob, and a json file including:
 	// - Bounding box
-	// - Bounding sphere
 	// - Scale + bias for each axis
 	// - Distance value scale + bias
 	// - Mirror mode
