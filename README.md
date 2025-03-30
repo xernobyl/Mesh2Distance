@@ -18,7 +18,6 @@ All the options that should be available to the user:
 
 Output should be a binary blob, and a json file including:
 - Bounding box
-- Bounding sphere (TODO)
 - Scale + bias for each axis
 - Distance value scale + bias
 - Mirror mode

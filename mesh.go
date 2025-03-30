@@ -16,10 +16,8 @@ type Triangle [3]uint32
 type Mesh struct {
 	Vertices  []Vec3
 	Triangles []Triangle
-	Min       Vec3    // Bounding box bottom corner
-	Max       Vec3    // Bounding box top corner
-	Center    Vec3    // Bounding sphere center
-	Radius    float32 // Bounding sphere radius
+	Min       Vec3 // Bounding box bottom corner
+	Max       Vec3 // Bounding box top corner
 }
 
 // LoadOBJ loads a mesh from an OBJ file.
