@@ -122,11 +122,11 @@ func main() {
 	}
 
 	jsonData, err := json.MarshalIndent(map[string]any{
-		"min_distance":      minD,
-		"max_distance":      maxD,
-		"width":             distanceSettings.width,
-		"height":            distanceSettings.height,
-		"depth":             distanceSettings.depth,
+		"distance_min":      minD,
+		"distance_max":      maxD,
+		"texture_width":     distanceSettings.width,
+		"texture_height":    distanceSettings.height,
+		"texture_depth":     distanceSettings.depth,
 		"bounding_box_min":  mesh.Min,
 		"bounding_box_max":  mesh.Max,
 		"texture_data":      pathNoExt + ".bin",
