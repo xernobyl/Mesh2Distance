@@ -1,2 +1,7 @@
+.gitignore
 /mesh2distance.exe
-/skull.*
+*.dds
+*.json
+*.bin
+*.mtl
+*.obj

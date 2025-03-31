@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/chewxy/math32"
 )
 
 // mirror modes
@@ -73,12 +75,10 @@ func main() {
 		distanceSettings.convertionOptions |= convertionOptions16bits
 	}
 
-	re := regexp.MustCompile(`(\d{1,3})x(\d{1,3})x(\d{1,3})`)
+	reSize0 := regexp.MustCompile(`(\d{1,3})x(\d{1,3})x(\d{1,3})`)
+	reSize1 := regexp.MustCompile(`(\d{1,3})`)
 
-	if matches := re.FindStringSubmatch(*outputResolutionPtr); matches == nil {
-		fmt.Println("Invalid output resolution")
-		return
-	} else {
+	if matches := reSize0.FindStringSubmatch(*outputResolutionPtr); matches != nil {
 		w, _ := strconv.ParseUint(matches[1], 10, 16)
 		distanceSettings.width = uint16(w)
 		h, _ := strconv.ParseUint(matches[2], 10, 16)
@@ -92,12 +92,56 @@ func main() {
 		}
 
 		fmt.Printf("Output resolution: %d x %d x %d\n", w, h, d)
+
+	}
+
+	if matches := reSize1.FindStringSubmatch(*outputResolutionPtr); matches != nil {
+		w, _ := strconv.ParseUint(matches[1], 10, 16)
+		if w <= 0 || w > 256 {
+			fmt.Println("Output resolution must be between 1 and 256, inclusive")
+			return
+		}
+
+		distanceSettings.width = uint16(w)
+		distanceSettings.height = distanceSettings.width
+		distanceSettings.depth = distanceSettings.width
+
+		fmt.Printf("Output resolution: %d x %d x %d\n", w, w, w)
+	} else {
+		fmt.Println("Invalid output resolution")
+		return
 	}
 
 	mesh, err := LoadOBJ(*filePathPtr)
 	if err != nil {
 		fmt.Println("Error loading mesh:", err)
 		return
+	}
+
+	boxSize := Sub(mesh.Max, mesh.Min)
+	maxSide := Max3(boxSize[0], boxSize[1], boxSize[2])
+	var sw, sh, sd uint16
+
+	if maxSide == boxSize[0] {
+		sw = distanceSettings.width
+		sh = uint16(math32.Ceil(boxSize[1] * float32(distanceSettings.width) / float32(boxSize[0])))
+		sd = uint16(math32.Ceil(boxSize[2] * float32(distanceSettings.width) / float32(boxSize[0])))
+	}
+
+	if maxSide == boxSize[1] {
+		sw = uint16(math32.Ceil(boxSize[0] * float32(distanceSettings.height) / float32(boxSize[1])))
+		sh = distanceSettings.height
+		sd = uint16(math32.Ceil(boxSize[2] * float32(distanceSettings.height) / float32(boxSize[1])))
+	}
+
+	if maxSide == boxSize[2] {
+		sw = uint16(math32.Ceil(boxSize[0] * float32(distanceSettings.depth) / float32(boxSize[2])))
+		sh = uint16(math32.Ceil(boxSize[1] * float32(distanceSettings.depth) / float32(boxSize[2])))
+		sd = distanceSettings.depth
+	}
+
+	if distanceSettings.width != sw || distanceSettings.height != sh || distanceSettings.depth != sd {
+		fmt.Printf("%dx%dx%d should be more fitting?\n", sw, sh, sd)
 	}
 
 	data, minD, maxD := calculate(distanceSettings, *mesh)
