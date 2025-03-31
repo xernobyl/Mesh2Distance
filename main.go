@@ -122,7 +122,7 @@ func main() {
 		"bounding_box_min": mesh.Min,
 		"bounding_box_max": mesh.Max,
 		"texture_data":     pathNoExt + ".bin",
-		"texture_format":   *outputTypePtr,
+		"texture_format":   fmt.Sprintf("u%d", *outputTypePtr),
 	}, "", "  ")
 	if err != nil {
 		panic(err)
@@ -134,7 +134,7 @@ func main() {
 		panic(err)
 	}
 
-	Save3DTextureAsDDS(pathNoExt+".dds", data, int(distanceSettings.width), int(distanceSettings.height), int(distanceSettings.depth))
+	Save3DTextureAsDDS(pathNoExt+".dds", data, uint32(distanceSettings.width), uint32(distanceSettings.height), uint32(distanceSettings.depth), uint32(*outputTypePtr))
 
 	fmt.Println("All done. Bye.")
 }

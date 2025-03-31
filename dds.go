@@ -49,7 +49,7 @@ const (
 )
 
 // Save3DTextureAsDDS saves a 3D texture as a DDS file
-func Save3DTextureAsDDS(filename string, data []byte, width, height, depth int) error {
+func Save3DTextureAsDDS(filename string, data []byte, width, height, depth, format uint32) error {
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -60,16 +60,17 @@ func Save3DTextureAsDDS(filename string, data []byte, width, height, depth int) 
 		Magic:            DDS_MAGIC,
 		Size:             124,
 		Flags:            DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT | DDSD_DEPTH,
-		Height:           uint32(height),
-		Width:            uint32(width),
-		Depth:            uint32(depth),
-		PitchOrLinear:    uint32(len(data) / depth),
-		PixelFormatSize:  8,
+		Height:           height,
+		Width:            width,
+		Depth:            depth,
+		PitchOrLinear:    uint32(len(data) / int(depth)),
+		PixelFormatSize:  8, // 32????
 		PixelFormatFlags: DDPF_ALPHAPIXELS,
-		RGBBitCount:      8, // Assuming RGB format
+		RGBBitCount:      format,
 		RBitMask:         0x00FF0000,
 		GBitMask:         0x0000FF00,
 		BBitMask:         0x000000FF,
+		ABitMask:         0xFF000000,
 		Caps:             DDSCAPS_TEXTURE | DDSCAPS_COMPLEX,
 		Caps2:            DDSCAPS2_VOLUME,
 	}
