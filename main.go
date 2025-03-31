@@ -75,8 +75,8 @@ func main() {
 		distanceSettings.convertionOptions |= convertionOptions16bits
 	}
 
-	reSize0 := regexp.MustCompile(`(\d{1,3})x(\d{1,3})x(\d{1,3})`)
-	reSize1 := regexp.MustCompile(`(\d{1,3})`)
+	reSize0 := regexp.MustCompile(`^(\d{1,3})x(\d{1,3})x(\d{1,3})$`)
+	reSize1 := regexp.MustCompile(`^(\d{1,3})$`)
 
 	if matches := reSize0.FindStringSubmatch(*outputResolutionPtr); matches != nil {
 		w, _ := strconv.ParseUint(matches[1], 10, 16)
@@ -92,10 +92,7 @@ func main() {
 		}
 
 		fmt.Printf("Output resolution: %d x %d x %d\n", w, h, d)
-
-	}
-
-	if matches := reSize1.FindStringSubmatch(*outputResolutionPtr); matches != nil {
+	} else if matches := reSize1.FindStringSubmatch(*outputResolutionPtr); matches != nil {
 		w, _ := strconv.ParseUint(matches[1], 10, 16)
 		if w <= 0 || w > 256 {
 			fmt.Println("Output resolution must be between 1 and 256, inclusive")
