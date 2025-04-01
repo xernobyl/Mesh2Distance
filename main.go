@@ -58,9 +58,9 @@ func main() {
 	// - Output type
 	// - Output resolution
 
-	outputTypePtr := flag.Int("outputtype", 8, "Output type, 8 or 16 bits")
-	outputResolutionPtr := flag.String("outputresolution", "32x32x32", "Output resolution WIDTHxHEIGHTxDEPTH")
-	//mirrorModePtr := flag.String("mirrormode", "", "Mirroring mode for each axis... format to be determined")
+	outputTypePtr := flag.Int("type", 8, "Output type, 8 or 16 bits")
+	outputResolutionPtr := flag.String("res", "32x32x32", "Output resolution WIDTHxHEIGHTxDEPTH")
+	mirrorModePtr := flag.String("mirrormode", "", "Mirroring mode for each axis... format to be determined")
 	filePathPtr := flag.String("file", "", ".obj file path")
 	flag.Parse()
 
@@ -75,39 +75,47 @@ func main() {
 		distanceSettings.convertionOptions |= convertionOptions16bits
 	}
 
+	reMirror := regexp.MustCompile(`^(-?x?i?)(-?y?i?)(-?z?i?)$`)
 	reSize0 := regexp.MustCompile(`^(\d{1,3})x(\d{1,3})x(\d{1,3})$`)
 	reSize1 := regexp.MustCompile(`^(\d{1,3})$`)
 
+	if matches := reMirror.FindStringSubmatch(*mirrorModePtr); matches != nil {
+		fmt.Printf("X mirror mode: \"%s\"\n", matches[1])
+		fmt.Printf("Y mirror mode: \"%s\"\n", matches[2])
+		fmt.Printf("Z mirror mode: \"%s\"\n", matches[3])
+	} else {
+		fmt.Println("Invalid mirror mode.")
+		return
+	}
+
 	if matches := reSize0.FindStringSubmatch(*outputResolutionPtr); matches != nil {
 		w, _ := strconv.ParseUint(matches[1], 10, 16)
-		distanceSettings.width = uint16(w)
 		h, _ := strconv.ParseUint(matches[2], 10, 16)
-		distanceSettings.height = uint16(h)
 		d, _ := strconv.ParseUint(matches[3], 10, 16)
-		distanceSettings.depth = uint16(d)
 
-		if w <= 0 || h <= 0 || d <= 0 || w > 256 || h > 256 || d > 256 {
-			fmt.Println("Output resolution must be between 1 and 256, inclusive")
+		if w <= 0 || h <= 0 || d <= 0 || w > 512 || h > 512 || d > 512 {
+			fmt.Println("Output resolution must be between 1 and 512, inclusive")
 			return
 		}
 
-		fmt.Printf("Output resolution: %d x %d x %d\n", w, h, d)
+		distanceSettings.width = uint16(w)
+		distanceSettings.height = uint16(h)
+		distanceSettings.depth = uint16(d)
 	} else if matches := reSize1.FindStringSubmatch(*outputResolutionPtr); matches != nil {
 		w, _ := strconv.ParseUint(matches[1], 10, 16)
-		if w <= 0 || w > 256 {
-			fmt.Println("Output resolution must be between 1 and 256, inclusive")
+
+		if w <= 0 || w > 512 {
+			fmt.Println("Output resolution must be between 1 and 512, inclusive")
 			return
 		}
 
 		distanceSettings.width = uint16(w)
-		distanceSettings.height = distanceSettings.width
-		distanceSettings.depth = distanceSettings.width
-
-		fmt.Printf("Output resolution: %d x %d x %d\n", w, w, w)
 	} else {
 		fmt.Println("Invalid output resolution")
 		return
 	}
+
+	fmt.Println("Loading 3D model...")
 
 	mesh, err := LoadOBJ(*filePathPtr)
 	if err != nil {
@@ -115,31 +123,35 @@ func main() {
 		return
 	}
 
-	boxSize := Sub(mesh.Max, mesh.Min)
-	maxSide := Max3(boxSize[0], boxSize[1], boxSize[2])
-	var sw, sh, sd uint16
+	if distanceSettings.height == 0 && distanceSettings.depth == 0 {
+		boxSize := Sub(mesh.Max, mesh.Min)
+		maxSide := Max3(boxSize[0], boxSize[1], boxSize[2])
+		var sw, sh, sd uint16
 
-	if maxSide == boxSize[0] {
-		sw = distanceSettings.width
-		sh = uint16(math32.Ceil(boxSize[1] * float32(distanceSettings.width) / float32(boxSize[0])))
-		sd = uint16(math32.Ceil(boxSize[2] * float32(distanceSettings.width) / float32(boxSize[0])))
+		if maxSide == boxSize[0] {
+			sw = distanceSettings.width
+			sh = uint16(math32.Ceil(boxSize[1] * float32(distanceSettings.width) / float32(boxSize[0])))
+			sd = uint16(math32.Ceil(boxSize[2] * float32(distanceSettings.width) / float32(boxSize[0])))
+		}
+
+		if maxSide == boxSize[1] {
+			sw = uint16(math32.Ceil(boxSize[0] * float32(distanceSettings.width) / float32(boxSize[1])))
+			sh = distanceSettings.width
+			sd = uint16(math32.Ceil(boxSize[2] * float32(distanceSettings.width) / float32(boxSize[1])))
+		}
+
+		if maxSide == boxSize[2] {
+			sw = uint16(math32.Ceil(boxSize[0] * float32(distanceSettings.width) / float32(boxSize[2])))
+			sh = uint16(math32.Ceil(boxSize[1] * float32(distanceSettings.width) / float32(boxSize[2])))
+			sd = distanceSettings.width
+		}
+
+		distanceSettings.width = sw
+		distanceSettings.height = sh
+		distanceSettings.depth = sd
 	}
 
-	if maxSide == boxSize[1] {
-		sw = uint16(math32.Ceil(boxSize[0] * float32(distanceSettings.height) / float32(boxSize[1])))
-		sh = distanceSettings.height
-		sd = uint16(math32.Ceil(boxSize[2] * float32(distanceSettings.height) / float32(boxSize[1])))
-	}
-
-	if maxSide == boxSize[2] {
-		sw = uint16(math32.Ceil(boxSize[0] * float32(distanceSettings.depth) / float32(boxSize[2])))
-		sh = uint16(math32.Ceil(boxSize[1] * float32(distanceSettings.depth) / float32(boxSize[2])))
-		sd = distanceSettings.depth
-	}
-
-	if distanceSettings.width != sw || distanceSettings.height != sh || distanceSettings.depth != sd {
-		fmt.Printf("%dx%dx%d should be more fitting?\n", sw, sh, sd)
-	}
+	fmt.Printf("Output resolution: %d x %d x %d\n", distanceSettings.width, distanceSettings.height, distanceSettings.depth)
 
 	data, minD, maxD := calculate(distanceSettings, *mesh)
 
@@ -178,4 +190,10 @@ func main() {
 	Save3DTextureAsDDS(pathNoExt+".dds", data, uint32(distanceSettings.width), uint32(distanceSettings.height), uint32(distanceSettings.depth), uint32(*outputTypePtr))
 
 	fmt.Println("All done. Bye.")
+
+	fmt.Printf("model(\nvec3(%f, %f, %f),\nvec3(%f, %f, %f),\n%f,\n%f);\n",
+		mesh.Min[0], mesh.Min[1], mesh.Min[2],
+		mesh.Max[0], mesh.Max[1], mesh.Max[2],
+		minD,
+		maxD)
 }
