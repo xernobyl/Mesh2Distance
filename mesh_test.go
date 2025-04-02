@@ -46,3 +46,15 @@ func TestCalculate(t *testing.T) {
 		depth:  8,
 	}, *mesh)
 }
+
+func TestSameWind(t *testing.T) {
+	tA := Triangle{0, 1, 2}
+	tB := Triangle{1, 2, 3}
+	tC := Triangle{3, 2, 1}
+
+	r := sameWindingOrder(tA, tB, [2]uint32{2, 1})
+	assert.False(t, r)
+
+	r = sameWindingOrder(tA, tC, [2]uint32{2, 1})
+	assert.True(t, r)
+}

@@ -100,7 +100,7 @@ func distance(p, a, b, c Vec3) float32 {
 	n := Cross(ba, ac)
 
 	var sign float32
-	if t := Dot(n, pa); t > 0.0 {
+	if Dot(n, pa) > 0.0 {
 		sign = -1.0
 	} else {
 		sign = 1.0
@@ -116,6 +116,98 @@ func distance(p, a, b, c Vec3) float32 {
 	}
 
 	return sign * math32.Sqrt((Dot(n, pa) * Dot(n, pa) / Dot2(n)))
+}
+
+func isAdjacent(a, b Triangle) (bool, [2]uint32) {
+	shared := [2]uint32{}
+	count := 0
+
+	for _, va := range a {
+		for _, vb := range b {
+			if va == vb {
+				if count < 2 {
+					shared[count] = va
+				}
+				count++
+			}
+		}
+	}
+
+	return count == 2, shared
+}
+
+func sameWindingOrder(triangleA, triangleB Triangle, shared [2]uint32) bool {
+	for i, a := range triangleA {
+		if a == shared[0] {
+			if triangleA[(i+1)%3] == shared[1] {
+				// other triangle should have shared[1] -> shared[0]
+
+				for j, b := range triangleB {
+					if b == shared[0] {
+						return triangleB[(j+2)%3] == shared[1]
+					}
+				}
+			} else {
+				// other triangle should have shared[1] -> shared[0]
+
+				for j, b := range triangleB {
+					if b == shared[0] {
+						return triangleB[(j+1)%3] == shared[1]
+					}
+				}
+			}
+
+		}
+	}
+
+	// should never be reached I think...
+	return false
+}
+
+/*
+Check if the triangles are pointing in a consistent direction
+*/
+func (mesh *Mesh) fixTriangle() bool {
+	for a, triangleA := range mesh.Triangles {
+		adjacentCount := 0
+
+		for b, triangleB := range mesh.Triangles {
+			if a == b {
+				continue
+			}
+
+			adjacent, shared := isAdjacent(triangleA, triangleB)
+			if !adjacent {
+				continue
+			}
+
+			adjacentCount++
+
+			sameWinding := sameWindingOrder(triangleA, triangleB, shared)
+			if !sameWinding {
+
+				fmt.Printf("Warning: Triangle %d (%d) is inverted! Check your 3d model.\n", b, a)
+
+				/*t := triangleB[0]
+				triangleB[0] = triangleB[1]
+				triangleB[1] = t
+				mesh.Triangles[b] = triangleB
+
+				return false*/
+			}
+		}
+
+		if adjacentCount == 0 {
+			fmt.Println("Warning: Disconnected triangles! Check your 3D model.")
+		}
+	}
+
+	return true
+}
+
+func (mesh *Mesh) fixTriangles() {
+	for !mesh.fixTriangle() {
+	}
 }
 
 /*
@@ -192,7 +284,7 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 
 	for z := uint(0); z < depth; z++ {
 		wg.Add(1)
-		go func() {
+		go func(z uint) {
 			minDi := math32.Inf(1)
 			maxDi := math32.Inf(-1)
 
@@ -223,11 +315,41 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 
 			fmt.Printf("finished layer %d out of %d\n", z, depth-1)
 			wg.Done()
-		}()
+		}(z)
 	}
 
 	wg.Wait()
 	fmt.Println("...All done.")
+
+	// Find biggest smallest negative number adjacent to a positive number
+	minDNextToPos := float32(0.0)
+
+	for z := 1; z < int(depth)-2; z++ {
+		for y := 1; y < int(height)-2; y++ {
+			for x := 1; x < int(width)-2; x++ {
+
+				d := data[x+y*int(width)+z*int(width)*int(height)]
+				if d >= 0.0 {
+					continue
+				}
+
+				t0 := data[(x-1)+y*int(width)+z*int(width)*int(height)]
+				t1 := data[(x+1)+y*int(width)+z*int(width)*int(height)]
+				t2 := data[x+(y-1)*int(width)+z*int(width)*int(height)]
+				t3 := data[x+(y+1)*int(width)+z*int(width)*int(height)]
+				t4 := data[x+y*int(width)+(z-1)*int(width)*int(height)]
+				t5 := data[x+y*int(width)+(z+1)*int(width)*int(height)]
+
+				if t0 > 0.0 || t1 > 0.0 || t2 > 0.0 || t3 > 0.0 || t4 > 0.0 || t5 > 0.0 {
+					if d < minDNextToPos {
+						minDNextToPos = d
+					}
+				}
+			}
+		}
+	}
+
+	fmt.Printf("minDNextToPos: %f\n", minDNextToPos)
 
 	// Create buffer of correct type
 	if settings.convertionOptions&convertionOptions16bits == convertionOptions16bits {

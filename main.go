@@ -123,6 +123,8 @@ func main() {
 		return
 	}
 
+	mesh.fixTriangles()
+
 	if distanceSettings.height == 0 && distanceSettings.depth == 0 {
 		boxSize := Sub(mesh.Max, mesh.Min)
 		maxSide := Max3(boxSize[0], boxSize[1], boxSize[2])
