@@ -61,13 +61,20 @@ func main() {
 	outputTypePtr := flag.Int("type", 8, "Output type, 8 or 16 bits")
 	outputResolutionPtr := flag.String("res", "32x32x32", "Output resolution WIDTHxHEIGHTxDEPTH")
 	mirrorModePtr := flag.String("mirrormode", "", "Mirroring mode for each axis... format to be determined")
-	filePathPtr := flag.String("file", "", ".obj file path")
+	filePathPtr := flag.String("file", "bin", ".obj file path")
+	formatPtr := flag.String("format", "bin", "output file format")
+	checkFilePtr := flag.Bool("check", false, "Do some file checks before continuing, mostly for debugging")
 	flag.Parse()
 
 	distanceSettings := distanceSettings{}
 
 	if *outputTypePtr != 8 && *outputTypePtr != 16 {
 		fmt.Println("Output type must be 8 or 16")
+		return
+	}
+
+	if *formatPtr != "bin" && *formatPtr != "dds" {
+		fmt.Println("Output format must be \"bin\" or \"dds\"")
 		return
 	}
 
@@ -79,6 +86,7 @@ func main() {
 	reSize0 := regexp.MustCompile(`^(\d{1,3})x(\d{1,3})x(\d{1,3})$`)
 	reSize1 := regexp.MustCompile(`^(\d{1,3})$`)
 
+	// Parse mirror modes (-xi, x, xi)
 	if matches := reMirror.FindStringSubmatch(*mirrorModePtr); matches != nil {
 		fmt.Printf("X mirror mode: \"%s\"\n", matches[1])
 		fmt.Printf("Y mirror mode: \"%s\"\n", matches[2])
@@ -88,6 +96,7 @@ func main() {
 		return
 	}
 
+	// Parse resolution
 	if matches := reSize0.FindStringSubmatch(*outputResolutionPtr); matches != nil {
 		w, _ := strconv.ParseUint(matches[1], 10, 16)
 		h, _ := strconv.ParseUint(matches[2], 10, 16)
@@ -123,8 +132,13 @@ func main() {
 		return
 	}
 
-	mesh.fixTriangles()
+	// Do some weird checks on file, mostly for debugging
+	if checkFilePtr != nil && *checkFilePtr {
+		fmt.Println("Verifying mesh...")
+		mesh.fixTriangles()
+	}
 
+	// Calculate other dimensions in case only one is given
 	if distanceSettings.height == 0 && distanceSettings.depth == 0 {
 		boxSize := Sub(mesh.Max, mesh.Min)
 		maxSide := Max3(boxSize[0], boxSize[1], boxSize[2])
@@ -162,10 +176,21 @@ func main() {
 	ext := filepath.Ext(*filePathPtr)
 	pathNoExt := strings.TrimSuffix(*filePathPtr, ext)
 
-	err = os.WriteFile(pathNoExt+".bin", data, 0644)
-	if err != nil {
-		fmt.Println("Error saving file:", err)
-		return
+	if *formatPtr == "dds" {
+		Save3DTextureAsDDS(
+			pathNoExt+".dds",
+			data,
+			uint32(distanceSettings.width),
+			uint32(distanceSettings.height),
+			uint32(distanceSettings.depth),
+			uint32(*outputTypePtr),
+		)
+	} else {
+		err = os.WriteFile(pathNoExt+".bin", data, 0644)
+		if err != nil {
+			fmt.Println("Error saving file:", err)
+			return
+		}
 	}
 
 	jsonData, err := json.MarshalIndent(map[string]any{
@@ -176,7 +201,7 @@ func main() {
 		"texture_depth":    distanceSettings.depth,
 		"bounding_box_min": mesh.Min,
 		"bounding_box_max": mesh.Max,
-		"texture_data":     pathNoExt + ".bin",
+		"texture_data":     pathNoExt + "." + *formatPtr,
 		"texture_format":   fmt.Sprintf("u%d", *outputTypePtr),
 	}, "", "  ")
 	if err != nil {
@@ -189,11 +214,9 @@ func main() {
 		panic(err)
 	}
 
-	Save3DTextureAsDDS(pathNoExt+".dds", data, uint32(distanceSettings.width), uint32(distanceSettings.height), uint32(distanceSettings.depth), uint32(*outputTypePtr))
-
 	fmt.Println("All done. Bye.")
 
-	fmt.Printf("model(\nvec3(%f, %f, %f),\nvec3(%f, %f, %f),\n%f,\n%f);\n",
+	fmt.Printf("\nmodel(\n\tvec3(%f, %f, %f),\n\tvec3(%f, %f, %f),\n\t%f,\n\t%f);\n",
 		mesh.Min[0], mesh.Min[1], mesh.Min[2],
 		mesh.Max[0], mesh.Max[1], mesh.Max[2],
 		minD,

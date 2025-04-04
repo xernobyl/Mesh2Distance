@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,52 @@ type Mesh struct {
 	Triangles []Triangle
 	Min       Vec3 // Bounding box bottom corner
 	Max       Vec3 // Bounding box top corner
+}
+
+// Returns min and max Vec3 from the triangle
+func getTriangleAABB(p0, p1, p2 Vec3) (Vec3, Vec3) {
+	min := Vec3{math32.Inf(1), math32.Inf(1), math32.Inf(1)}
+	max := Vec3{math32.Inf(-1), math32.Inf(-1), math32.Inf(-1)}
+
+	for i := 0; i < 3; i++ {
+		min[i] = Min3(p0[i], p1[i], p2[i])
+		max[i] = Min3(p0[i], p1[i], p2[i])
+	}
+
+	return min, max
+}
+
+// Returns a list of triangles on each box square
+func (m *Mesh) createTriangleLists(width, height, depth uint) [][]int {
+	triangles := make([][]int, width*height*depth)
+
+	for triangleIdx, triangle := range m.Triangles {
+		v0 := m.Vertices[triangle[0]]
+		v1 := m.Vertices[triangle[1]]
+		v2 := m.Vertices[triangle[2]]
+
+		min, max := getTriangleAABB(v0, v1, v2)
+
+		var minIdx [3]uint
+		var maxIdx [3]uint
+
+		s := [3]uint{width, height, depth}
+
+		for i := 0; i < 3; i++ {
+			minIdx[i] = uint((min[i] - m.Min[i]) / (m.Max[i] - m.Min[i]) * float32(s[i]))
+			maxIdx[i] = uint((max[i] - m.Min[i]) / (m.Max[i] - m.Min[i]) * float32(s[i]))
+		}
+
+		for z := Max(0, minIdx[2]); z <= Min(depth-1, maxIdx[2]); z++ {
+			for y := Max(0, minIdx[1]); y <= Min(height-1, maxIdx[1]); y++ {
+				for x := Max(0, minIdx[0]); x <= Min(width-1, maxIdx[0]); x++ {
+					triangles[x+y*width+z*width*height] = append(triangles[x+y*width+z*width*height], triangleIdx)
+				}
+			}
+		}
+	}
+
+	return triangles
 }
 
 // LoadOBJ loads a mesh from an OBJ file.
@@ -168,39 +215,51 @@ func sameWindingOrder(triangleA, triangleB Triangle, shared [2]uint32) bool {
 Check if the triangles are pointing in a consistent direction
 */
 func (mesh *Mesh) fixTriangle() bool {
-	for a, triangleA := range mesh.Triangles {
-		adjacentCount := 0
+	var wg sync.WaitGroup
+	n := runtime.NumCPU()
 
-		for b, triangleB := range mesh.Triangles {
-			if a == b {
-				continue
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(a, b int) {
+			for a, triangleA := range mesh.Triangles[a:b] {
+				adjacentCount := 0
+
+				for b, triangleB := range mesh.Triangles {
+					if a == b {
+						continue
+					}
+
+					adjacent, shared := isAdjacent(triangleA, triangleB)
+					if !adjacent {
+						continue
+					}
+
+					adjacentCount++
+
+					sameWinding := sameWindingOrder(triangleA, triangleB, shared)
+					if !sameWinding {
+
+						fmt.Printf("Warning: Triangle %d (%d) is inverted! Check your 3d model.\n", b, a)
+
+						/*t := triangleB[0]
+						triangleB[0] = triangleB[1]
+						triangleB[1] = t
+						mesh.Triangles[b] = triangleB
+
+						return false*/
+					}
+				}
+
+				if adjacentCount == 0 {
+					fmt.Println("Warning: Disconnected triangles! Check your 3D model.")
+				}
 			}
 
-			adjacent, shared := isAdjacent(triangleA, triangleB)
-			if !adjacent {
-				continue
-			}
-
-			adjacentCount++
-
-			sameWinding := sameWindingOrder(triangleA, triangleB, shared)
-			if !sameWinding {
-
-				fmt.Printf("Warning: Triangle %d (%d) is inverted! Check your 3d model.\n", b, a)
-
-				/*t := triangleB[0]
-				triangleB[0] = triangleB[1]
-				triangleB[1] = t
-				mesh.Triangles[b] = triangleB
-
-				return false*/
-			}
-		}
-
-		if adjacentCount == 0 {
-			fmt.Println("Warning: Disconnected triangles! Check your 3D model.")
-		}
+			wg.Done()
+		}(i*(len(mesh.Triangles)/n), (i+1)*(len(mesh.Triangles)/n))
 	}
+
+	wg.Wait()
 
 	return true
 }
@@ -236,12 +295,67 @@ func (mesh Mesh) distance(p Vec3) float32 {
 }
 
 /*
+Signed distance from point p to closest point on mesh, using triangle lists to accelerate search
+*/
+func (m Mesh) distanceUsingList(p Vec3, depth, height, width, x, y, z uint, triangleLists [][]int) float32 {
+	visitedTriangles := map[int]struct{}{}
+	foundTriangles := false
+	layer := 0
+	minDistance := math32.Inf(1)
+
+	// if triangles are found in the layer then we won't find closer triangles on the next layers
+
+	for !foundTriangles {
+		for zz := Max(0, int(z)-layer); zz <= Min(int(z)+layer, int(depth-1)); zz++ {
+			for yy := Max(0, int(y)-layer); yy <= Min(int(y)+layer, int(height-1)); yy++ {
+				for xx := Max(0, int(x)-layer); xx <= Min(int(x)+layer, int(width-1)); xx++ {
+					for _, triangleIdx := range triangleLists[xx+yy*int(width)+zz*int(width*height)] {
+						// skip triangle if already visited
+						_, ok := visitedTriangles[triangleIdx]
+						if ok {
+							continue
+						}
+
+						// set as visited
+						visitedTriangles[triangleIdx] = struct{}{}
+						foundTriangles = true
+
+						triangle := m.Triangles[triangleIdx]
+						v0 := m.Vertices[triangle[0]]
+						v1 := m.Vertices[triangle[1]]
+						v2 := m.Vertices[triangle[2]]
+
+						d := distance(p, v0, v1, v2)
+
+						// early exit, nothing smaller than 0.0 can be found
+						if d == 0 {
+							return 0.0
+						}
+
+						if math32.Abs(d) < math32.Abs(minDistance) {
+							minDistance = d
+						}
+					}
+				}
+			}
+		}
+
+		// Go to next layer of the onion cube
+		layer++
+	}
+
+	return minDistance
+}
+
+/*
 Goes trough all points of 3D texture and calculates the signed distance to mesh.
 */
 func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD float32, maxD float32) {
 	width := uint(settings.width)
 	height := uint(settings.height)
 	depth := uint(settings.depth)
+
+	triangleLists := mesh.createTriangleLists(width, height, depth)
 
 	data := make([]float32, width*height*depth)
 
@@ -291,7 +405,7 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 			for y := uint(0); y < height; y++ {
 				for x := uint(0); x < width; x++ {
 					p := Add(Mul(Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
-					d := mesh.distance(p)
+					d := mesh.distanceUsingList(p, width, height, depth, x, y, z, triangleLists)
 					data[x+y*width+z*width*height] = d
 
 					if d < minDi {
@@ -321,35 +435,37 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 	wg.Wait()
 	fmt.Println("...All done.")
 
-	// Find biggest smallest negative number adjacent to a positive number
-	minDNextToPos := float32(0.0)
+	/*
+		// Find biggest smallest negative number adjacent to a positive number
+		minDNextToPos := float32(0.0)
 
-	for z := 1; z < int(depth)-2; z++ {
-		for y := 1; y < int(height)-2; y++ {
-			for x := 1; x < int(width)-2; x++ {
+		for z := 1; z < int(depth)-2; z++ {
+			for y := 1; y < int(height)-2; y++ {
+				for x := 1; x < int(width)-2; x++ {
 
-				d := data[x+y*int(width)+z*int(width)*int(height)]
-				if d >= 0.0 {
-					continue
-				}
+					d := data[x+y*int(width)+z*int(width)*int(height)]
+					if d >= 0.0 {
+						continue
+					}
 
-				t0 := data[(x-1)+y*int(width)+z*int(width)*int(height)]
-				t1 := data[(x+1)+y*int(width)+z*int(width)*int(height)]
-				t2 := data[x+(y-1)*int(width)+z*int(width)*int(height)]
-				t3 := data[x+(y+1)*int(width)+z*int(width)*int(height)]
-				t4 := data[x+y*int(width)+(z-1)*int(width)*int(height)]
-				t5 := data[x+y*int(width)+(z+1)*int(width)*int(height)]
+					t0 := data[(x-1)+y*int(width)+z*int(width)*int(height)]
+					t1 := data[(x+1)+y*int(width)+z*int(width)*int(height)]
+					t2 := data[x+(y-1)*int(width)+z*int(width)*int(height)]
+					t3 := data[x+(y+1)*int(width)+z*int(width)*int(height)]
+					t4 := data[x+y*int(width)+(z-1)*int(width)*int(height)]
+					t5 := data[x+y*int(width)+(z+1)*int(width)*int(height)]
 
-				if t0 > 0.0 || t1 > 0.0 || t2 > 0.0 || t3 > 0.0 || t4 > 0.0 || t5 > 0.0 {
-					if d < minDNextToPos {
-						minDNextToPos = d
+					if t0 > 0.0 || t1 > 0.0 || t2 > 0.0 || t3 > 0.0 || t4 > 0.0 || t5 > 0.0 {
+						if d < minDNextToPos {
+							minDNextToPos = d
+						}
 					}
 				}
 			}
 		}
-	}
 
-	fmt.Printf("minDNextToPos: %f\n", minDNextToPos)
+		fmt.Printf("minDNextToPos: %f\n", minDNextToPos)
+	*/
 
 	// Create buffer of correct type
 	if settings.convertionOptions&convertionOptions16bits == convertionOptions16bits {

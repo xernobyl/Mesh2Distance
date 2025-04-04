@@ -4,7 +4,10 @@ A simple math vector library... New functions added as needed.
 
 package main
 
-import "github.com/chewxy/math32"
+import (
+	"github.com/chewxy/math32"
+	"golang.org/x/exp/constraints"
+)
 
 type Vec3 [3]float32
 
@@ -69,31 +72,29 @@ func Saturate(v float32) float32 {
 	return Clamp(v, 0.0, 1.0)
 }
 
-func Min(a, b float32) float32 {
+func Min[T constraints.Ordered](a, b T) T {
 	if a < b {
 		return a
 	}
-
 	return b
 }
 
-func Max(a, b float32) float32 {
+func Max[T constraints.Ordered](a, b T) T {
 	if a > b {
 		return a
 	}
-
 	return b
 }
 
-func Min3(a, b, c float32) float32 {
+func Min3[T constraints.Ordered](a, b, c T) T {
 	return Min(a, Min(b, c))
 }
 
-func Max3(a, b, c float32) float32 {
+func Max3[T constraints.Ordered](a, b, c T) T {
 	return Max(a, Max(b, c))
 }
 
-func MinN(nums ...float32) float32 {
+func MinN[T constraints.Ordered](nums ...T) T {
 	if len(nums) == 0 {
 		panic("Min requires at least one argument")
 	}
@@ -108,7 +109,7 @@ func MinN(nums ...float32) float32 {
 	return minValue
 }
 
-func MaxN(nums ...float32) float32 {
+func MaxN[T constraints.Ordered](nums ...T) T {
 	if len(nums) == 0 {
 		panic("Min requires at least one argument")
 	}
