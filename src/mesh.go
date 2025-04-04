@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,20 +23,20 @@ type Mesh struct {
 }
 
 // Returns triangle bounding box
-func getTriangleAABB(p0, p1, p2 vec.Vec3) (vec.Vec3, vec.Vec3) {
+func getTriangleAABB(v0, v1, v2 vec.Vec3) (vec.Vec3, vec.Vec3) {
 	var min vec.Vec3
 	var max vec.Vec3
 
-	for i := 0; i < 3; i++ {
-		min[i] = vec.Min3(p0[i], p1[i], p2[i])
-		max[i] = vec.Max3(p0[i], p1[i], p2[i])
+	for i := range 3 {
+		min[i] = vec.Min3(v0[i], v1[i], v2[i])
+		max[i] = vec.Max3(v0[i], v1[i], v2[i])
 	}
 
 	return min, max
 }
 
 // Returns a list of triangles on each box square
-func (m *Mesh) createTriangleLists(width, height, depth uint) [][]int {
+func (m *Mesh) createTriangleLists(width, height, depth int) [][]int {
 	triangles := make([][]int, width*height*depth)
 
 	for triangleIdx, triangle := range m.Triangles {
@@ -45,16 +44,16 @@ func (m *Mesh) createTriangleLists(width, height, depth uint) [][]int {
 		v1 := m.Vertices[triangle[1]]
 		v2 := m.Vertices[triangle[2]]
 
-		min, max := getTriangleAABB(v0, v1, v2)
+		tMin, tMax := getTriangleAABB(v0, v1, v2)
+		s := [3]int{width - 1, height - 1, depth - 1}
+		var minIdx [3]int
+		var maxIdx [3]int
 
-		var minIdx [3]uint
-		var maxIdx [3]uint
-
-		s := [3]uint{width, height, depth}
-
-		for i := 0; i < 3; i++ {
-			minIdx[i] = uint((min[i] - m.Min[i]) / (m.Max[i] - m.Min[i]) * float32(s[i]))
-			maxIdx[i] = uint((max[i] - m.Min[i]) / (m.Max[i] - m.Min[i]) * float32(s[i]))
+		for i := range 3 {
+			// adding a bit of tolerance because of rounding errors, and
+			// corners that are further away than the adjacent blocks
+			minIdx[i] = int(math32.Round((tMin[i]-m.Min[i])/(m.Max[i]-m.Min[i])*float32(s[i])) - 1)
+			maxIdx[i] = int(math32.Round((tMax[i]-m.Min[i])/(m.Max[i]-m.Min[i])*float32(s[i])) + 1)
 		}
 
 		for z := vec.Max(0, minIdx[2]); z <= vec.Min(depth-1, maxIdx[2]); z++ {
@@ -133,6 +132,8 @@ func LoadOBJ(filepath string) (*Mesh, error) {
 		return nil, err
 	}
 
+	fmt.Printf("%d triangles\n", len(model.Triangles))
+
 	return model, nil
 }
 
@@ -167,110 +168,6 @@ func distance(p, a, b, c vec.Vec3) float32 {
 	return sign * math32.Sqrt((vec.Dot(n, pa) * vec.Dot(n, pa) / vec.Dot2(n)))
 }
 
-func isAdjacent(a, b Triangle) (bool, [2]uint32) {
-	shared := [2]uint32{}
-	count := 0
-
-	for _, va := range a {
-		for _, vb := range b {
-			if va == vb {
-				if count < 2 {
-					shared[count] = va
-				}
-				count++
-			}
-		}
-	}
-
-	return count == 2, shared
-}
-
-func sameWindingOrder(triangleA, triangleB Triangle, shared [2]uint32) bool {
-	for i, a := range triangleA {
-		if a == shared[0] {
-			if triangleA[(i+1)%3] == shared[1] {
-				// other triangle should have shared[1] -> shared[0]
-
-				for j, b := range triangleB {
-					if b == shared[0] {
-						return triangleB[(j+2)%3] == shared[1]
-					}
-				}
-			} else {
-				// other triangle should have shared[1] -> shared[0]
-
-				for j, b := range triangleB {
-					if b == shared[0] {
-						return triangleB[(j+1)%3] == shared[1]
-					}
-				}
-			}
-
-		}
-	}
-
-	// should never be reached I think...
-	return false
-}
-
-/*
-Check if the triangles are pointing in a consistent direction
-*/
-func (mesh *Mesh) fixTriangle() bool {
-	var wg sync.WaitGroup
-	n := runtime.NumCPU()
-
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func(a, b int) {
-			for a, triangleA := range mesh.Triangles[a:b] {
-				adjacentCount := 0
-
-				for b, triangleB := range mesh.Triangles {
-					if a == b {
-						continue
-					}
-
-					adjacent, shared := isAdjacent(triangleA, triangleB)
-					if !adjacent {
-						continue
-					}
-
-					adjacentCount++
-
-					sameWinding := sameWindingOrder(triangleA, triangleB, shared)
-					if !sameWinding {
-
-						fmt.Printf("Warning: Triangle %d (%d) is inverted! Check your 3d model.\n", b, a)
-
-						/*t := triangleB[0]
-						triangleB[0] = triangleB[1]
-						triangleB[1] = t
-						mesh.Triangles[b] = triangleB
-
-						return false*/
-					}
-				}
-
-				if adjacentCount == 0 {
-					fmt.Println("Warning: Disconnected triangles! Check your 3D model.")
-				}
-			}
-
-			wg.Done()
-		}(i*(len(mesh.Triangles)/n), (i+1)*(len(mesh.Triangles)/n))
-	}
-
-	wg.Wait()
-
-	return true
-}
-
-func (mesh *Mesh) fixTriangles() {
-	for !mesh.fixTriangle() {
-	}
-}
-
 /*
 Signed distance from point p to closest point on mesh.
 */
@@ -299,24 +196,27 @@ func (mesh Mesh) distance(p vec.Vec3) float32 {
 /*
 Signed distance from point p to closest point on mesh, using triangle lists to accelerate search
 */
-func (m Mesh) distanceUsingList(p vec.Vec3, depth, height, width, x, y, z uint, triangleLists [][]int) float32 {
+func (m Mesh) distanceUsingList(p vec.Vec3, width, height, depth, ix, iy, iz int, triangleLists [][]int) float32 {
 	visitedTriangles := map[int]struct{}{}
 	foundTriangles := false
 	layer := 0
 	minDistance := math32.Inf(1)
+	checkedTriangles := 0
 
 	// if triangles are found in the layer then we won't find closer triangles on the next layers
 
 	for !foundTriangles {
-		for zz := vec.Max(0, int(z)-layer); zz <= vec.Min(int(z)+layer, int(depth-1)); zz++ {
-			for yy := vec.Max(0, int(y)-layer); yy <= vec.Min(int(y)+layer, int(height-1)); yy++ {
-				for xx := vec.Max(0, int(x)-layer); xx <= vec.Min(int(x)+layer, int(width-1)); xx++ {
+		for zz := vec.Max(0, int(iz)-layer); zz <= vec.Min(int(iz)+layer, int(depth-1)); zz++ {
+			for yy := vec.Max(0, int(iy)-layer); yy <= vec.Min(int(iy)+layer, int(height-1)); yy++ {
+				for xx := vec.Max(0, int(ix)-layer); xx <= vec.Min(int(ix)+layer, int(width-1)); xx++ {
 					for _, triangleIdx := range triangleLists[xx+yy*int(width)+zz*int(width*height)] {
 						// skip triangle if already visited
 						_, ok := visitedTriangles[triangleIdx]
 						if ok {
 							continue
 						}
+
+						checkedTriangles++
 
 						// set as visited
 						visitedTriangles[triangleIdx] = struct{}{}
@@ -326,7 +226,6 @@ func (m Mesh) distanceUsingList(p vec.Vec3, depth, height, width, x, y, z uint, 
 						v0 := m.Vertices[triangle[0]]
 						v1 := m.Vertices[triangle[1]]
 						v2 := m.Vertices[triangle[2]]
-
 						d := distance(p, v0, v1, v2)
 
 						// early exit, nothing smaller than 0.0 can be found
@@ -342,9 +241,11 @@ func (m Mesh) distanceUsingList(p vec.Vec3, depth, height, width, x, y, z uint, 
 			}
 		}
 
-		// Go to next layer of the onion cube
+		// Go to next layer of the cubic onion
 		layer++
 	}
+
+	fmt.Printf("Checked %d triangles at (%d, %d, %d)\n", checkedTriangles, ix, iy, iz)
 
 	return minDistance
 }
@@ -353,9 +254,9 @@ func (m Mesh) distanceUsingList(p vec.Vec3, depth, height, width, x, y, z uint, 
 Goes trough all points of 3D texture and calculates the signed distance to mesh.
 */
 func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD float32, maxD float32) {
-	width := uint(settings.width)
-	height := uint(settings.height)
-	depth := uint(settings.depth)
+	width := int(settings.width)
+	height := int(settings.height)
+	depth := int(settings.depth)
 
 	fmt.Println("Creating triangle lists...")
 	triangleLists := mesh.createTriangleLists(width, height, depth)
@@ -399,14 +300,14 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 
 	fmt.Println("Calculating distance field...")
 
-	for z := uint(0); z < depth; z++ {
+	for z := range depth {
 		wg.Add(1)
-		go func(z uint) {
+		go func(z int) {
 			minDi := math32.Inf(1)
 			maxDi := math32.Inf(-1)
 
-			for y := uint(0); y < height; y++ {
-				for x := uint(0); x < width; x++ {
+			for y := range height {
+				for x := range width {
 					p := vec.Add(vec.Mul(vec.Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
 					d := mesh.distanceUsingList(p, width, height, depth, x, y, z, triangleLists)
 					data[x+y*width+z*width*height] = d
@@ -430,7 +331,7 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 			}
 			mu.Unlock()
 
-			fmt.Printf("finished layer %d out of %d\n", z, depth-1)
+			fmt.Printf("finished layer %d out of %d\n", z, depth)
 			wg.Done()
 		}(z)
 	}
