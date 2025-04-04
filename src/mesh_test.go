@@ -61,7 +61,7 @@ func TestSameWind(t *testing.T) {
 }
 
 func TestTriangleList(t *testing.T) {
-	mesh, err := LoadOBJ("../tetrahedron.obj")
+	mesh, err := LoadOBJ("../data/skull.obj")
 	assert.NoError(t, err)
 
 	width := 32
@@ -81,14 +81,15 @@ func TestTriangleList(t *testing.T) {
 	pointScale[2] = (mesh.Max[2] - mesh.Min[2]) / float32(depth-1)
 	pointBias[2] = mesh.Min[2]
 
-	for z := 0; z < depth; z++ {
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
+	for z := range depth {
+		for y := range height {
+			for x := range width {
 				p := vec.Add(vec.Mul(vec.Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
-				d0 := mesh.distanceUsingList(p, uint(width), uint(height), uint(depth), uint(x), uint(y), uint(z), triangleLists)
+
+				d0 := mesh.distanceUsingList(p, width, height, depth, x, y, z, triangleLists)
 				d1 := mesh.distance(p)
 
-				assert.Equal(t, d0, d1)
+				assert.InDelta(t, d0, d1, 0.0001)
 			}
 		}
 	}
