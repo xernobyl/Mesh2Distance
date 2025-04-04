@@ -2,7 +2,7 @@
 A simple math vector library... New functions added as needed.
 */
 
-package main
+package vec
 
 import (
 	"github.com/chewxy/math32"
@@ -56,7 +56,7 @@ func Normalize(a Vec3) Vec3 {
 	return Vec3{a[0] / l, a[1] / l, a[2] / l}
 }
 
-func Clamp(v, min, max float32) float32 {
+func Clamp[T constraints.Ordered](v, min, max T) T {
 	if v > max {
 		return max
 	}
@@ -68,8 +68,8 @@ func Clamp(v, min, max float32) float32 {
 	return v
 }
 
-func Saturate(v float32) float32 {
-	return Clamp(v, 0.0, 1.0)
+func Saturate[T ~float32 | ~float64](v T) T {
+	return Clamp(v, T(0.0), T(1.0))
 }
 
 func Min[T constraints.Ordered](a, b T) T {

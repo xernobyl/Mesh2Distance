@@ -10,25 +10,27 @@ import (
 	"sync"
 
 	"github.com/chewxy/math32"
+
+	"github.com/xernobyl/mesh2distance/src/vec"
 )
 
 type Triangle [3]uint32
 
 type Mesh struct {
-	Vertices  []Vec3
+	Vertices  []vec.Vec3
 	Triangles []Triangle
-	Min       Vec3 // Bounding box bottom corner
-	Max       Vec3 // Bounding box top corner
+	Min       vec.Vec3 // Bounding box bottom corner
+	Max       vec.Vec3 // Bounding box top corner
 }
 
-// Returns min and max Vec3 from the triangle
-func getTriangleAABB(p0, p1, p2 Vec3) (Vec3, Vec3) {
-	min := Vec3{math32.Inf(1), math32.Inf(1), math32.Inf(1)}
-	max := Vec3{math32.Inf(-1), math32.Inf(-1), math32.Inf(-1)}
+// Returns triangle bounding box
+func getTriangleAABB(p0, p1, p2 vec.Vec3) (vec.Vec3, vec.Vec3) {
+	var min vec.Vec3
+	var max vec.Vec3
 
 	for i := 0; i < 3; i++ {
-		min[i] = Min3(p0[i], p1[i], p2[i])
-		max[i] = Min3(p0[i], p1[i], p2[i])
+		min[i] = vec.Min3(p0[i], p1[i], p2[i])
+		max[i] = vec.Max3(p0[i], p1[i], p2[i])
 	}
 
 	return min, max
@@ -55,9 +57,9 @@ func (m *Mesh) createTriangleLists(width, height, depth uint) [][]int {
 			maxIdx[i] = uint((max[i] - m.Min[i]) / (m.Max[i] - m.Min[i]) * float32(s[i]))
 		}
 
-		for z := Max(0, minIdx[2]); z <= Min(depth-1, maxIdx[2]); z++ {
-			for y := Max(0, minIdx[1]); y <= Min(height-1, maxIdx[1]); y++ {
-				for x := Max(0, minIdx[0]); x <= Min(width-1, maxIdx[0]); x++ {
+		for z := vec.Max(0, minIdx[2]); z <= vec.Min(depth-1, maxIdx[2]); z++ {
+			for y := vec.Max(0, minIdx[1]); y <= vec.Min(height-1, maxIdx[1]); y++ {
+				for x := vec.Max(0, minIdx[0]); x <= vec.Min(width-1, maxIdx[0]); x++ {
 					triangles[x+y*width+z*width*height] = append(triangles[x+y*width+z*width*height], triangleIdx)
 				}
 			}
@@ -77,8 +79,8 @@ func LoadOBJ(filepath string) (*Mesh, error) {
 	defer file.Close()
 
 	model := &Mesh{
-		Min: Vec3{math32.Inf(1), math32.Inf(1), math32.Inf(1)},
-		Max: Vec3{math32.Inf(-1), math32.Inf(-1), math32.Inf(-1)},
+		Min: vec.Vec3{math32.Inf(1), math32.Inf(1), math32.Inf(1)},
+		Max: vec.Vec3{math32.Inf(-1), math32.Inf(-1), math32.Inf(-1)},
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -102,7 +104,7 @@ func LoadOBJ(filepath string) (*Mesh, error) {
 			x, _ := strconv.ParseFloat(tokens[1], 32)
 			y, _ := strconv.ParseFloat(tokens[2], 32)
 			z, _ := strconv.ParseFloat(tokens[3], 32)
-			model.Vertices = append(model.Vertices, Vec3{float32(x), float32(y), float32(z)})
+			model.Vertices = append(model.Vertices, vec.Vec3{float32(x), float32(y), float32(z)})
 
 			model.Min[0] = min(model.Min[0], float32(x))
 			model.Min[1] = min(model.Min[1], float32(y))
@@ -137,32 +139,32 @@ func LoadOBJ(filepath string) (*Mesh, error) {
 /*
 Signed distance from point p to triangle defined by a, b, and c.
 */
-func distance(p, a, b, c Vec3) float32 {
-	ba := Sub(b, a)
-	pa := Sub(p, a)
-	cb := Sub(c, b)
-	pb := Sub(p, b)
-	ac := Sub(a, c)
-	pc := Sub(p, c)
-	n := Cross(ba, ac)
+func distance(p, a, b, c vec.Vec3) float32 {
+	ba := vec.Sub(b, a)
+	pa := vec.Sub(p, a)
+	cb := vec.Sub(c, b)
+	pb := vec.Sub(p, b)
+	ac := vec.Sub(a, c)
+	pc := vec.Sub(p, c)
+	n := vec.Cross(ba, ac)
 
 	var sign float32
-	if Dot(n, pa) > 0.0 {
+	if vec.Dot(n, pa) > 0.0 {
 		sign = -1.0
 	} else {
 		sign = 1.0
 	}
 
-	if Sign(Dot(Cross(ba, n), pa))+
-		Sign(Dot(Cross(cb, n), pa))+
-		Sign(Dot(Cross(ac, n), pa)) < 2.0 {
-		return sign * math32.Sqrt(Min3(
-			Dot2(Sub(Scale(ba, Saturate(Dot(ba, pa)/Dot2(ba))), pa)),
-			Dot2(Sub(Scale(cb, Saturate(Dot(cb, pb)/Dot2(cb))), pb)),
-			Dot2(Sub(Scale(ac, Saturate(Dot(ac, pc)/Dot2(ac))), pc))))
+	if vec.Sign(vec.Dot(vec.Cross(ba, n), pa))+
+		vec.Sign(vec.Dot(vec.Cross(cb, n), pa))+
+		vec.Sign(vec.Dot(vec.Cross(ac, n), pa)) < 2.0 {
+		return sign * math32.Sqrt(vec.Min3(
+			vec.Dot2(vec.Sub(vec.Scale(ba, vec.Saturate(vec.Dot(ba, pa)/vec.Dot2(ba))), pa)),
+			vec.Dot2(vec.Sub(vec.Scale(cb, vec.Saturate(vec.Dot(cb, pb)/vec.Dot2(cb))), pb)),
+			vec.Dot2(vec.Sub(vec.Scale(ac, vec.Saturate(vec.Dot(ac, pc)/vec.Dot2(ac))), pc))))
 	}
 
-	return sign * math32.Sqrt((Dot(n, pa) * Dot(n, pa) / Dot2(n)))
+	return sign * math32.Sqrt((vec.Dot(n, pa) * vec.Dot(n, pa) / vec.Dot2(n)))
 }
 
 func isAdjacent(a, b Triangle) (bool, [2]uint32) {
@@ -272,7 +274,7 @@ func (mesh *Mesh) fixTriangles() {
 /*
 Signed distance from point p to closest point on mesh.
 */
-func (mesh Mesh) distance(p Vec3) float32 {
+func (mesh Mesh) distance(p vec.Vec3) float32 {
 	minDistance := math32.Inf(1)
 
 	for _, triangle := range mesh.Triangles {
@@ -297,7 +299,7 @@ func (mesh Mesh) distance(p Vec3) float32 {
 /*
 Signed distance from point p to closest point on mesh, using triangle lists to accelerate search
 */
-func (m Mesh) distanceUsingList(p Vec3, depth, height, width, x, y, z uint, triangleLists [][]int) float32 {
+func (m Mesh) distanceUsingList(p vec.Vec3, depth, height, width, x, y, z uint, triangleLists [][]int) float32 {
 	visitedTriangles := map[int]struct{}{}
 	foundTriangles := false
 	layer := 0
@@ -306,9 +308,9 @@ func (m Mesh) distanceUsingList(p Vec3, depth, height, width, x, y, z uint, tria
 	// if triangles are found in the layer then we won't find closer triangles on the next layers
 
 	for !foundTriangles {
-		for zz := Max(0, int(z)-layer); zz <= Min(int(z)+layer, int(depth-1)); zz++ {
-			for yy := Max(0, int(y)-layer); yy <= Min(int(y)+layer, int(height-1)); yy++ {
-				for xx := Max(0, int(x)-layer); xx <= Min(int(x)+layer, int(width-1)); xx++ {
+		for zz := vec.Max(0, int(z)-layer); zz <= vec.Min(int(z)+layer, int(depth-1)); zz++ {
+			for yy := vec.Max(0, int(y)-layer); yy <= vec.Min(int(y)+layer, int(height-1)); yy++ {
+				for xx := vec.Max(0, int(x)-layer); xx <= vec.Min(int(x)+layer, int(width-1)); xx++ {
 					for _, triangleIdx := range triangleLists[xx+yy*int(width)+zz*int(width*height)] {
 						// skip triangle if already visited
 						_, ok := visitedTriangles[triangleIdx]
@@ -355,6 +357,7 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 	height := uint(settings.height)
 	depth := uint(settings.depth)
 
+	fmt.Println("Creating triangle lists...")
 	triangleLists := mesh.createTriangleLists(width, height, depth)
 
 	data := make([]float32, width*height*depth)
@@ -363,7 +366,7 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 	minD = math32.Inf(1)
 	maxD = math32.Inf(-1)
 
-	var pointScale, pointBias Vec3
+	var pointScale, pointBias vec.Vec3
 
 	// Calculate scale and bias for each axis
 	/*if settings.convertionOptions&convertionOptionsMirrorX == convertionOptionsMirrorX {
@@ -404,7 +407,7 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 
 			for y := uint(0); y < height; y++ {
 				for x := uint(0); x < width; x++ {
-					p := Add(Mul(Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
+					p := vec.Add(vec.Mul(vec.Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
 					d := mesh.distanceUsingList(p, width, height, depth, x, y, z, triangleLists)
 					data[x+y*width+z*width*height] = d
 
@@ -488,9 +491,9 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 		if settings.convertionOptions&convertionOptions16bits == convertionOptions16bits {
 			var t uint16
 			if negative {
-				t = uint16(Max(0.0, Min(math32.Floor(v*65535.0), 65535.0)))
+				t = uint16(vec.Max(0.0, vec.Min(math32.Floor(v*65535.0), 65535.0)))
 			} else {
-				t = uint16(Max(0.0, Min(math32.Ceil(v*65535.0), 65535.0)))
+				t = uint16(vec.Max(0.0, vec.Min(math32.Ceil(v*65535.0), 65535.0)))
 			}
 
 			// Convert to little endian
@@ -498,9 +501,9 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 			outputData[i*2+1] = byte((t >> 8) & 0xFF)
 		} else {
 			if negative {
-				outputData[i] = uint8(Max(0.0, Min(math32.Floor(v*255), 255.0)))
+				outputData[i] = uint8(vec.Max(0.0, vec.Min(math32.Floor(v*255), 255.0)))
 			} else {
-				outputData[i] = uint8(Max(0.0, Min(math32.Ceil(v*255), 255.0)))
+				outputData[i] = uint8(vec.Max(0.0, vec.Min(math32.Ceil(v*255), 255.0)))
 			}
 		}
 	}

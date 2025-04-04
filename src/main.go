@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/chewxy/math32"
+	"github.com/xernobyl/mesh2distance/src/vec"
 )
 
 // mirror modes
@@ -140,8 +141,8 @@ func main() {
 
 	// Calculate other dimensions in case only one is given
 	if distanceSettings.height == 0 && distanceSettings.depth == 0 {
-		boxSize := Sub(mesh.Max, mesh.Min)
-		maxSide := Max3(boxSize[0], boxSize[1], boxSize[2])
+		boxSize := vec.Sub(mesh.Max, mesh.Min)
+		maxSide := vec.Max3(boxSize[0], boxSize[1], boxSize[2])
 		var sw, sh, sd uint16
 
 		if maxSide == boxSize[0] {
@@ -216,7 +217,7 @@ func main() {
 
 	fmt.Println("All done. Bye.")
 
-	fmt.Printf("\nmodel(\n\tvec3(%f, %f, %f),\n\tvec3(%f, %f, %f),\n\t%f,\n\t%f);\n",
+	fmt.Printf("\nmodel(vec3(%f, %f, %f),\n\tvec3(%f, %f, %f),\n\t%f,\n\t%f);\n",
 		mesh.Min[0], mesh.Min[1], mesh.Min[2],
 		mesh.Max[0], mesh.Max[1], mesh.Max[2],
 		minD,
