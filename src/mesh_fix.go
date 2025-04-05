@@ -59,7 +59,7 @@ func (mesh *Mesh) fixTriangle() bool {
 	var wg sync.WaitGroup
 	n := runtime.NumCPU()
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		wg.Add(1)
 		go func(a, b int) {
 			for a, triangleA := range mesh.Triangles[a:b] {

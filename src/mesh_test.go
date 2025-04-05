@@ -3,9 +3,37 @@ package main
 import (
 	"testing"
 
+	"github.com/chewxy/math32"
 	"github.com/stretchr/testify/assert"
 	"github.com/xernobyl/mesh2distance/src/vec"
 )
+
+/*
+Signed distance from point p to closest point on mesh,
+using brute force method.
+Use to compare with the list method.
+*/
+func (mesh Mesh) distanceBruteForce(p vec.Vec3) float32 {
+	minDistance := math32.Inf(1)
+
+	for _, triangle := range mesh.Triangles {
+		v0 := mesh.Vertices[triangle[0]]
+		v1 := mesh.Vertices[triangle[1]]
+		v2 := mesh.Vertices[triangle[2]]
+
+		d := distance(p, v0, v1, v2)
+
+		if d == 0 {
+			return 0.0
+		}
+
+		if math32.Abs(d) < math32.Abs(minDistance) {
+			minDistance = d
+		}
+	}
+
+	return minDistance
+}
 
 func TestDistance(t *testing.T) {
 	a := vec.Vec3{0.0, 1.0, -1.0}
@@ -86,8 +114,8 @@ func TestTriangleList(t *testing.T) {
 			for x := range width {
 				p := vec.Add(vec.Mul(vec.Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
 
-				d0 := mesh.distanceUsingList(p, width, height, depth, x, y, z, triangleLists)
-				d1 := mesh.distance(p)
+				d0 := mesh.distanceBruteForce(p)
+				d1 := mesh.distanceUsingList(p, width, height, depth, x, y, z, triangleLists)
 
 				assert.InDelta(t, d0, d1, 0.0001)
 			}

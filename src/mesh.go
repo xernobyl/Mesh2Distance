@@ -169,31 +169,6 @@ func distance(p, a, b, c vec.Vec3) float32 {
 }
 
 /*
-Signed distance from point p to closest point on mesh.
-*/
-func (mesh Mesh) distance(p vec.Vec3) float32 {
-	minDistance := math32.Inf(1)
-
-	for _, triangle := range mesh.Triangles {
-		v0 := mesh.Vertices[triangle[0]]
-		v1 := mesh.Vertices[triangle[1]]
-		v2 := mesh.Vertices[triangle[2]]
-
-		d := distance(p, v0, v1, v2)
-
-		if d == 0 {
-			return 0.0
-		}
-
-		if math32.Abs(d) < math32.Abs(minDistance) {
-			minDistance = d
-		}
-	}
-
-	return minDistance
-}
-
-/*
 Signed distance from point p to closest point on mesh, using triangle lists to accelerate search
 */
 func (m Mesh) distanceUsingList(p vec.Vec3, width, height, depth, ix, iy, iz int, triangleLists [][]int) float32 {
@@ -244,8 +219,6 @@ func (m Mesh) distanceUsingList(p vec.Vec3, width, height, depth, ix, iy, iz int
 		// Go to next layer of the cubic onion
 		layer++
 	}
-
-	fmt.Printf("Checked %d triangles at (%d, %d, %d)\n", checkedTriangles, ix, iy, iz)
 
 	return minDistance
 }

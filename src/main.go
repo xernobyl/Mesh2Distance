@@ -17,6 +17,9 @@ import (
 // mirror modes
 type convertionOptions uint16
 
+const resLimit = 4096
+const sizeLimit = 16 * 1024 * 1024 // 16MB
+
 const (
 	convertionOptionsMirrorX              = 1 << 0
 	convertionOptionsMirrorXIncludeCenter = 1 << 1
@@ -84,8 +87,8 @@ func main() {
 	}
 
 	reMirror := regexp.MustCompile(`^(-?x?i?)(-?y?i?)(-?z?i?)$`)
-	reSize0 := regexp.MustCompile(`^(\d{1,3})x(\d{1,3})x(\d{1,3})$`)
-	reSize1 := regexp.MustCompile(`^(\d{1,3})$`)
+	reSize0 := regexp.MustCompile(`^(\d{1,4})x(\d{1,3})x(\d{1,3})$`)
+	reSize1 := regexp.MustCompile(`^(\d{1,4})$`)
 
 	// Parse mirror modes (-xi, x, xi)
 	if matches := reMirror.FindStringSubmatch(*mirrorModePtr); matches != nil {
@@ -103,8 +106,8 @@ func main() {
 		h, _ := strconv.ParseUint(matches[2], 10, 16)
 		d, _ := strconv.ParseUint(matches[3], 10, 16)
 
-		if w <= 0 || h <= 0 || d <= 0 || w > 512 || h > 512 || d > 512 {
-			fmt.Println("Output resolution must be between 1 and 512, inclusive")
+		if w <= 0 || h <= 0 || d <= 0 || w > resLimit || h > resLimit || d > resLimit {
+			fmt.Printf("Output resolution must be between 1 and %d, inclusive.\n", resLimit)
 			return
 		}
 
@@ -114,8 +117,8 @@ func main() {
 	} else if matches := reSize1.FindStringSubmatch(*outputResolutionPtr); matches != nil {
 		w, _ := strconv.ParseUint(matches[1], 10, 16)
 
-		if w <= 0 || w > 512 {
-			fmt.Println("Output resolution must be between 1 and 512, inclusive")
+		if w <= 0 || w > resLimit {
+			fmt.Printf("Output resolution must be between 1 and %d, inclusive.\n", resLimit)
 			return
 		}
 
@@ -169,6 +172,11 @@ func main() {
 	}
 
 	fmt.Printf("Output resolution: %d x %d x %d\n", distanceSettings.width, distanceSettings.height, distanceSettings.depth)
+
+	if (int(distanceSettings.width) * int(distanceSettings.height) * int(distanceSettings.depth)) > sizeLimit {
+		fmt.Printf("Output size is too big, maximum allowed is %d.\n", sizeLimit)
+		return
+	}
 
 	data, minD, maxD := calculate(distanceSettings, *mesh)
 
