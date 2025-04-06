@@ -36,7 +36,7 @@ func getTriangleAABB(v0, v1, v2 vec.Vec3) (vec.Vec3, vec.Vec3) {
 }
 
 // Returns a list of triangles on each box square
-func (m *Mesh) createTriangleLists(width, height, depth int) [][]int {
+func (m *Mesh) createTriangleLists(width, height, depth int, gridMin, gridMax vec.Vec3) [][]int {
 	triangles := make([][]int, width*height*depth)
 
 	for triangleIdx, triangle := range m.Triangles {
@@ -52,8 +52,8 @@ func (m *Mesh) createTriangleLists(width, height, depth int) [][]int {
 		for i := range 3 {
 			// adding a bit of tolerance because of rounding errors, and
 			// corners that are further away than the adjacent blocks
-			minIdx[i] = int(math32.Round((tMin[i]-m.Min[i])/(m.Max[i]-m.Min[i])*float32(s[i])) - 1)
-			maxIdx[i] = int(math32.Round((tMax[i]-m.Min[i])/(m.Max[i]-m.Min[i])*float32(s[i])) + 1)
+			minIdx[i] = int(math32.Round((tMin[i]-gridMin[i])/(gridMax[i]-gridMin[i])*float32(s[i])) - 1)
+			maxIdx[i] = int(math32.Round((tMax[i]-gridMin[i])/(gridMax[i]-gridMin[i])*float32(s[i])) + 1)
 		}
 
 		for z := vec.Max(0, minIdx[2]); z <= vec.Min(depth-1, maxIdx[2]); z++ {
@@ -226,13 +226,13 @@ func (m Mesh) distanceUsingList(p vec.Vec3, width, height, depth, ix, iy, iz int
 /*
 Goes trough all points of 3D texture and calculates the signed distance to mesh.
 */
-func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD float32, maxD float32) {
+func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) (outputData []byte, minD float32, maxD float32) {
 	width := int(settings.width)
 	height := int(settings.height)
 	depth := int(settings.depth)
 
 	fmt.Println("Creating triangle lists...")
-	triangleLists := mesh.createTriangleLists(width, height, depth)
+	triangleLists := mesh.createTriangleLists(width, height, depth, gridMin, gridMax)
 
 	data := make([]float32, width*height*depth)
 
@@ -259,14 +259,15 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 		pointBias[0] = mesh.Min[0]
 	}*/
 
-	pointScale[0] = (mesh.Max[0] - mesh.Min[0]) / float32(width-1)
-	pointBias[0] = mesh.Min[0]
+	// mesh should have an half texel border to avoid artifacts at the edges
+	pointScale[0] = (gridMax[0] - gridMin[0]) / float32(width-1)
+	pointBias[0] = gridMin[0]
 
-	pointScale[1] = (mesh.Max[1] - mesh.Min[1]) / float32(height-1)
-	pointBias[1] = mesh.Min[1]
+	pointScale[1] = (gridMax[1] - gridMin[1]) / float32(height-1)
+	pointBias[1] = gridMin[1]
 
-	pointScale[2] = (mesh.Max[2] - mesh.Min[2]) / float32(depth-1)
-	pointBias[2] = mesh.Min[2]
+	pointScale[2] = (gridMax[2] - gridMin[2]) / float32(depth-1)
+	pointBias[2] = gridMin[2]
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -311,38 +312,6 @@ func calculate(settings distanceSettings, mesh Mesh) (outputData []byte, minD fl
 
 	wg.Wait()
 	fmt.Println("...All done.")
-
-	/*
-		// Find biggest smallest negative number adjacent to a positive number
-		minDNextToPos := float32(0.0)
-
-		for z := 1; z < int(depth)-2; z++ {
-			for y := 1; y < int(height)-2; y++ {
-				for x := 1; x < int(width)-2; x++ {
-
-					d := data[x+y*int(width)+z*int(width)*int(height)]
-					if d >= 0.0 {
-						continue
-					}
-
-					t0 := data[(x-1)+y*int(width)+z*int(width)*int(height)]
-					t1 := data[(x+1)+y*int(width)+z*int(width)*int(height)]
-					t2 := data[x+(y-1)*int(width)+z*int(width)*int(height)]
-					t3 := data[x+(y+1)*int(width)+z*int(width)*int(height)]
-					t4 := data[x+y*int(width)+(z-1)*int(width)*int(height)]
-					t5 := data[x+y*int(width)+(z+1)*int(width)*int(height)]
-
-					if t0 > 0.0 || t1 > 0.0 || t2 > 0.0 || t3 > 0.0 || t4 > 0.0 || t5 > 0.0 {
-						if d < minDNextToPos {
-							minDNextToPos = d
-						}
-					}
-				}
-			}
-		}
-
-		fmt.Printf("minDNextToPos: %f\n", minDNextToPos)
-	*/
 
 	// Create buffer of correct type
 	if settings.convertionOptions&convertionOptions16bits == convertionOptions16bits {

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/chewxy/math32"
@@ -52,7 +51,7 @@ func main() {
 	// - Output type:
 	//   - u8	(include bias and scale)
 	//   - u16	(include bias and scale)
-	// - Output resolution: eg 256x256x256
+	// - Output resolution biggest dimension
 
 	// Output should be a binary blob, and a json file including:
 	// - Bounding box
@@ -63,7 +62,7 @@ func main() {
 	// - Output resolution
 
 	outputTypePtr := flag.Int("type", 8, "Output type, 8 or 16 bits")
-	outputResolutionPtr := flag.String("res", "32x32x32", "Output resolution WIDTHxHEIGHTxDEPTH")
+	outputResolutionPtr := flag.Int("res", 32, "Output resolution biggest side")
 	mirrorModePtr := flag.String("mirrormode", "", "Mirroring mode for each axis... format to be determined")
 	filePathPtr := flag.String("file", "bin", ".obj file path")
 	formatPtr := flag.String("format", "bin", "output file format")
@@ -77,6 +76,11 @@ func main() {
 		return
 	}
 
+	if *outputResolutionPtr < 16 && *outputResolutionPtr > resLimit {
+		fmt.Printf("Output resolution must be between 16 and %d.\n", resLimit)
+		return
+	}
+
 	if *formatPtr != "bin" && *formatPtr != "dds" {
 		fmt.Println("Output format must be \"bin\" or \"dds\"")
 		return
@@ -87,44 +91,59 @@ func main() {
 	}
 
 	reMirror := regexp.MustCompile(`^(-?x?i?)(-?y?i?)(-?z?i?)$`)
-	reSize0 := regexp.MustCompile(`^(\d{1,4})x(\d{1,3})x(\d{1,3})$`)
-	reSize1 := regexp.MustCompile(`^(\d{1,4})$`)
 
 	// Parse mirror modes (-xi, x, xi)
 	if matches := reMirror.FindStringSubmatch(*mirrorModePtr); matches != nil {
 		fmt.Printf("X mirror mode: \"%s\"\n", matches[1])
 		fmt.Printf("Y mirror mode: \"%s\"\n", matches[2])
 		fmt.Printf("Z mirror mode: \"%s\"\n", matches[3])
+
+		switch matches[1] {
+		case "x":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorX
+		case "-x":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorXNegative
+			distanceSettings.convertionOptions |= convertionOptionsMirrorX
+		case "xi":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorX
+			distanceSettings.convertionOptions |= convertionOptionsMirrorXIncludeCenter
+		case "-xi":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorXNegative
+			distanceSettings.convertionOptions |= convertionOptionsMirrorX
+			distanceSettings.convertionOptions |= convertionOptionsMirrorXIncludeCenter
+		}
+
+		switch matches[2] {
+		case "y":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorY
+		case "-y":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorYNegative
+			distanceSettings.convertionOptions |= convertionOptionsMirrorY
+		case "yi":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorY
+			distanceSettings.convertionOptions |= convertionOptionsMirrorYIncludeCenter
+		case "-yi":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorYNegative
+			distanceSettings.convertionOptions |= convertionOptionsMirrorY
+			distanceSettings.convertionOptions |= convertionOptionsMirrorYIncludeCenter
+		}
+
+		switch matches[3] {
+		case "z":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorZ
+		case "-z":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorZNegative
+			distanceSettings.convertionOptions |= convertionOptionsMirrorZ
+		case "zi":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorZ
+			distanceSettings.convertionOptions |= convertionOptionsMirrorZIncludeCenter
+		case "-zi":
+			distanceSettings.convertionOptions |= convertionOptionsMirrorZNegative
+			distanceSettings.convertionOptions |= convertionOptionsMirrorZ
+			distanceSettings.convertionOptions |= convertionOptionsMirrorZIncludeCenter
+		}
 	} else {
 		fmt.Println("Invalid mirror mode.")
-		return
-	}
-
-	// Parse resolution
-	if matches := reSize0.FindStringSubmatch(*outputResolutionPtr); matches != nil {
-		w, _ := strconv.ParseUint(matches[1], 10, 16)
-		h, _ := strconv.ParseUint(matches[2], 10, 16)
-		d, _ := strconv.ParseUint(matches[3], 10, 16)
-
-		if w <= 0 || h <= 0 || d <= 0 || w > resLimit || h > resLimit || d > resLimit {
-			fmt.Printf("Output resolution must be between 1 and %d, inclusive.\n", resLimit)
-			return
-		}
-
-		distanceSettings.width = uint16(w)
-		distanceSettings.height = uint16(h)
-		distanceSettings.depth = uint16(d)
-	} else if matches := reSize1.FindStringSubmatch(*outputResolutionPtr); matches != nil {
-		w, _ := strconv.ParseUint(matches[1], 10, 16)
-
-		if w <= 0 || w > resLimit {
-			fmt.Printf("Output resolution must be between 1 and %d, inclusive.\n", resLimit)
-			return
-		}
-
-		distanceSettings.width = uint16(w)
-	} else {
-		fmt.Println("Invalid output resolution")
 		return
 	}
 
@@ -142,33 +161,38 @@ func main() {
 		mesh.fixTriangles()
 	}
 
-	// Calculate other dimensions in case only one is given
-	if distanceSettings.height == 0 && distanceSettings.depth == 0 {
-		boxSize := vec.Sub(mesh.Max, mesh.Min)
-		maxSide := vec.Max3(boxSize[0], boxSize[1], boxSize[2])
-		var sw, sh, sd uint16
+	var gridSize vec.Vec3
+	meshSize := vec.Sub(mesh.Max, mesh.Min)
 
-		if maxSide == boxSize[0] {
-			sw = distanceSettings.width
-			sh = uint16(math32.Ceil(boxSize[1] * float32(distanceSettings.width) / float32(boxSize[0])))
-			sd = uint16(math32.Ceil(boxSize[2] * float32(distanceSettings.width) / float32(boxSize[0])))
-		}
+	// Calculate other dimensions in case only one is given, using cubic
+	// texels, because there's no clear advantage to using square textures,
+	// and add 0.5 texels on each side of the mesh to avoid artifacts.
+	biggestSide := vec.Max3(meshSize[0], meshSize[1], meshSize[2])
 
-		if maxSide == boxSize[1] {
-			sw = uint16(math32.Ceil(boxSize[0] * float32(distanceSettings.width) / float32(boxSize[1])))
-			sh = distanceSettings.width
-			sd = uint16(math32.Ceil(boxSize[2] * float32(distanceSettings.width) / float32(boxSize[1])))
-		}
+	if biggestSide == meshSize[0] { // X is the biggest side
+		distanceSettings.width = uint16(*outputResolutionPtr)
+		distanceSettings.height = uint16(math32.Ceil(meshSize[1]*float32(*outputResolutionPtr)/float32(meshSize[0]) + 1))
+		distanceSettings.depth = uint16(math32.Ceil(meshSize[2]*float32(*outputResolutionPtr)/float32(meshSize[1]) + 1))
 
-		if maxSide == boxSize[2] {
-			sw = uint16(math32.Ceil(boxSize[0] * float32(distanceSettings.width) / float32(boxSize[2])))
-			sh = uint16(math32.Ceil(boxSize[1] * float32(distanceSettings.width) / float32(boxSize[2])))
-			sd = distanceSettings.width
-		}
+		gridSize[0] = meshSize[0] * float32(*outputResolutionPtr) / float32(*outputResolutionPtr-1)
+		gridSize[1] = meshSize[1] * float32(distanceSettings.height) / (meshSize[1] * float32(*outputResolutionPtr) / float32(meshSize[0]))
+		gridSize[2] = meshSize[2] * float32(distanceSettings.depth) / (meshSize[2] * float32(*outputResolutionPtr) / float32(meshSize[1]))
+	} else if biggestSide == meshSize[1] { // Y is the biggest side
+		distanceSettings.width = uint16(math32.Ceil(meshSize[0]*float32(*outputResolutionPtr)/float32(meshSize[1]) + 1))
+		distanceSettings.height = uint16(*outputResolutionPtr)
+		distanceSettings.depth = uint16(math32.Ceil(meshSize[2]*float32(*outputResolutionPtr)/float32(meshSize[1]) + 1))
 
-		distanceSettings.width = sw
-		distanceSettings.height = sh
-		distanceSettings.depth = sd
+		gridSize[0] = meshSize[0] * float32(distanceSettings.width) / (meshSize[0] * float32(*outputResolutionPtr) / float32(meshSize[0]))
+		gridSize[1] = meshSize[1] * float32(*outputResolutionPtr) / float32(*outputResolutionPtr-1)
+		gridSize[2] = meshSize[2] * float32(distanceSettings.depth) / (meshSize[2] * float32(*outputResolutionPtr) / float32(meshSize[1]))
+	} else { // Z is the biggest side
+		distanceSettings.width = uint16(math32.Ceil(meshSize[0]*float32(*outputResolutionPtr)/float32(meshSize[2]) + 1))
+		distanceSettings.height = uint16(math32.Ceil(meshSize[1]*float32(*outputResolutionPtr)/float32(meshSize[2]) + 1))
+		distanceSettings.depth = uint16(*outputResolutionPtr)
+
+		gridSize[0] = meshSize[0] * float32(distanceSettings.width) / (meshSize[0] * float32(*outputResolutionPtr) / float32(meshSize[0]))
+		gridSize[1] = meshSize[1] * float32(distanceSettings.height) / (meshSize[1] * float32(*outputResolutionPtr) / float32(meshSize[0]))
+		gridSize[2] = meshSize[2] * float32(*outputResolutionPtr) / float32(*outputResolutionPtr-1)
 	}
 
 	fmt.Printf("Output resolution: %d x %d x %d\n", distanceSettings.width, distanceSettings.height, distanceSettings.depth)
@@ -178,7 +202,11 @@ func main() {
 		return
 	}
 
-	data, minD, maxD := calculate(distanceSettings, *mesh)
+	diff := vec.Scale(vec.Sub(gridSize, meshSize), 0.5)
+	gridMin := vec.Sub(mesh.Min, diff)
+	gridMax := vec.Add(mesh.Max, diff)
+
+	data, minD, maxD := calculate(distanceSettings, *mesh, gridMin, gridMax)
 
 	fmt.Println("Writing files...")
 
@@ -203,15 +231,17 @@ func main() {
 	}
 
 	jsonData, err := json.MarshalIndent(map[string]any{
-		"distance_min":     minD,
-		"distance_max":     maxD,
-		"texture_width":    distanceSettings.width,
-		"texture_height":   distanceSettings.height,
-		"texture_depth":    distanceSettings.depth,
-		"bounding_box_min": mesh.Min,
-		"bounding_box_max": mesh.Max,
-		"texture_data":     pathNoExt + "." + *formatPtr,
-		"texture_format":   fmt.Sprintf("u%d", *outputTypePtr),
+		"distance_min":          minD,
+		"distance_max":          maxD,
+		"texture_width":         distanceSettings.width,
+		"texture_height":        distanceSettings.height,
+		"texture_depth":         distanceSettings.depth,
+		"mesh_bounding_box_min": mesh.Min,
+		"mesh_bounding_box_max": mesh.Max,
+		"grid_bounding_box_min": gridMin,
+		"grid_bounding_box_max": gridMax,
+		"texture_data":          pathNoExt + "." + *formatPtr,
+		"texture_format":        fmt.Sprintf("u%d", *outputTypePtr),
 	}, "", "  ")
 	if err != nil {
 		panic(err)
@@ -226,8 +256,8 @@ func main() {
 	fmt.Println("All done. Bye.")
 
 	fmt.Printf("\nmodel(vec3(%f, %f, %f),\n\tvec3(%f, %f, %f),\n\t%f,\n\t%f);\n",
-		mesh.Min[0], mesh.Min[1], mesh.Min[2],
-		mesh.Max[0], mesh.Max[1], mesh.Max[2],
+		gridMin[0], gridMin[1], gridMin[2],
+		gridMax[0], gridMax[1], gridMax[2],
 		minD,
 		maxD)
 }
