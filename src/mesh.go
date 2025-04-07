@@ -22,6 +22,55 @@ type Mesh struct {
 	Max       vec.Vec3 // Bounding box top corner
 }
 
+// Calculate other dimensions in case only one is given, using cubic
+// texels, because there's no clear advantage to using square textures,
+// and add 0.5 texels on each side of the mesh to avoid artifacts.
+func calculateGridSize(meshMin, meshMax vec.Vec3, resolution int) (w, h, d int, gridMin, gridMax vec.Vec3) {
+	var gridSize vec.Vec3
+	meshSize := vec.Sub(meshMax, meshMin)
+
+	biggestSide := vec.Max3(meshSize[0], meshSize[1], meshSize[2])
+	density := float32(resolution) / biggestSide
+	iDensity := biggestSide / float32(resolution)
+	bigGridSize := biggestSide * float32(resolution-1) / float32(resolution-2)
+	texel := bigGridSize - biggestSide
+
+	if biggestSide == meshSize[0] {
+		// X is the biggest side
+		w = resolution
+		h = int(math32.Ceil((meshSize[1] + texel) * density))
+		d = int(math32.Ceil((meshSize[2] + texel) * density))
+
+		gridSize[0] = bigGridSize
+		gridSize[1] = float32(h) * iDensity
+		gridSize[2] = float32(d) * iDensity
+	} else if biggestSide == meshSize[1] {
+		// Y is the biggest side
+		w = int(math32.Ceil((meshSize[0] + texel) * density))
+		h = resolution
+		d = int(math32.Ceil((meshSize[2] + texel) * density))
+
+		gridSize[0] = float32(w) * iDensity
+		gridSize[1] = bigGridSize
+		gridSize[2] = float32(d) * iDensity
+	} else {
+		// Z is the biggest side
+		w = int(math32.Ceil((meshSize[0] + texel) * density))
+		h = int(math32.Ceil((meshSize[1] + texel) * density))
+		d = resolution
+
+		gridSize[0] = float32(w) * iDensity
+		gridSize[1] = float32(h) * iDensity
+		gridSize[2] = bigGridSize
+	}
+
+	diff := vec.Scale(vec.Sub(gridSize, meshSize), 0.5)
+	gridMin = vec.Sub(meshMin, diff)
+	gridMax = vec.Add(meshMax, diff)
+
+	return w, h, d, gridMin, gridMax
+}
+
 // Returns triangle bounding box
 func getTriangleAABB(v0, v1, v2 vec.Vec3) (vec.Vec3, vec.Vec3) {
 	var min vec.Vec3

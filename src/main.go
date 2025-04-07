@@ -8,9 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/chewxy/math32"
-	"github.com/xernobyl/mesh2distance/src/vec"
 )
 
 // mirror modes
@@ -161,50 +158,17 @@ func main() {
 		mesh.fixTriangles()
 	}
 
-	var gridSize vec.Vec3
-	meshSize := vec.Sub(mesh.Max, mesh.Min)
+	w, h, d, gridMin, gridMax := calculateGridSize(mesh.Min, mesh.Max, *outputResolutionPtr)
+	fmt.Printf("Output resolution: %d x %d x %d\n", w, h, d)
 
-	// Calculate other dimensions in case only one is given, using cubic
-	// texels, because there's no clear advantage to using square textures,
-	// and add 0.5 texels on each side of the mesh to avoid artifacts.
-	biggestSide := vec.Max3(meshSize[0], meshSize[1], meshSize[2])
-
-	if biggestSide == meshSize[0] { // X is the biggest side
-		distanceSettings.width = uint16(*outputResolutionPtr)
-		distanceSettings.height = uint16(math32.Ceil(meshSize[1]*float32(*outputResolutionPtr)/float32(meshSize[0]) + 1))
-		distanceSettings.depth = uint16(math32.Ceil(meshSize[2]*float32(*outputResolutionPtr)/float32(meshSize[1]) + 1))
-
-		gridSize[0] = meshSize[0] * float32(*outputResolutionPtr) / float32(*outputResolutionPtr-1)
-		gridSize[1] = meshSize[1] * float32(distanceSettings.height) / (meshSize[1] * float32(*outputResolutionPtr) / float32(meshSize[0]))
-		gridSize[2] = meshSize[2] * float32(distanceSettings.depth) / (meshSize[2] * float32(*outputResolutionPtr) / float32(meshSize[1]))
-	} else if biggestSide == meshSize[1] { // Y is the biggest side
-		distanceSettings.width = uint16(math32.Ceil(meshSize[0]*float32(*outputResolutionPtr)/float32(meshSize[1]) + 1))
-		distanceSettings.height = uint16(*outputResolutionPtr)
-		distanceSettings.depth = uint16(math32.Ceil(meshSize[2]*float32(*outputResolutionPtr)/float32(meshSize[1]) + 1))
-
-		gridSize[0] = meshSize[0] * float32(distanceSettings.width) / (meshSize[0] * float32(*outputResolutionPtr) / float32(meshSize[0]))
-		gridSize[1] = meshSize[1] * float32(*outputResolutionPtr) / float32(*outputResolutionPtr-1)
-		gridSize[2] = meshSize[2] * float32(distanceSettings.depth) / (meshSize[2] * float32(*outputResolutionPtr) / float32(meshSize[1]))
-	} else { // Z is the biggest side
-		distanceSettings.width = uint16(math32.Ceil(meshSize[0]*float32(*outputResolutionPtr)/float32(meshSize[2]) + 1))
-		distanceSettings.height = uint16(math32.Ceil(meshSize[1]*float32(*outputResolutionPtr)/float32(meshSize[2]) + 1))
-		distanceSettings.depth = uint16(*outputResolutionPtr)
-
-		gridSize[0] = meshSize[0] * float32(distanceSettings.width) / (meshSize[0] * float32(*outputResolutionPtr) / float32(meshSize[0]))
-		gridSize[1] = meshSize[1] * float32(distanceSettings.height) / (meshSize[1] * float32(*outputResolutionPtr) / float32(meshSize[0]))
-		gridSize[2] = meshSize[2] * float32(*outputResolutionPtr) / float32(*outputResolutionPtr-1)
-	}
-
-	fmt.Printf("Output resolution: %d x %d x %d\n", distanceSettings.width, distanceSettings.height, distanceSettings.depth)
-
-	if (int(distanceSettings.width) * int(distanceSettings.height) * int(distanceSettings.depth)) > sizeLimit {
+	if (w * h * d) > sizeLimit {
 		fmt.Printf("Output size is too big, maximum allowed is %d.\n", sizeLimit)
 		return
 	}
 
-	diff := vec.Scale(vec.Sub(gridSize, meshSize), 0.5)
-	gridMin := vec.Sub(mesh.Min, diff)
-	gridMax := vec.Add(mesh.Max, diff)
+	distanceSettings.width = uint16(w)
+	distanceSettings.height = uint16(h)
+	distanceSettings.depth = uint16(d)
 
 	data, minD, maxD := calculate(distanceSettings, *mesh, gridMin, gridMax)
 

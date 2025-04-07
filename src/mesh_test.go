@@ -73,7 +73,7 @@ func TestCalculate(t *testing.T) {
 		width:  8,
 		height: 8,
 		depth:  8,
-	}, *mesh)
+	}, *mesh, mesh.Min, mesh.Max)
 }
 
 func TestSameWind(t *testing.T) {
@@ -96,7 +96,7 @@ func TestTriangleList(t *testing.T) {
 	height := 32
 	depth := 32
 
-	triangleLists := mesh.createTriangleLists(32, 32, 32)
+	triangleLists := mesh.createTriangleLists(32, 32, 32, mesh.Min, mesh.Max)
 
 	var pointScale, pointBias vec.Vec3
 
@@ -121,4 +121,9 @@ func TestTriangleList(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestCalculateGridSize(t *testing.T) {
+	_, h, _, _, _ := calculateGridSize(vec.Vec3{0.0, 0.0, 0.0}, vec.Vec3{2.0, 3.0, 1.0}, 32)
+	assert.Equal(t, 32, h)
 }
