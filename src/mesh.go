@@ -99,10 +99,10 @@ func (m *Mesh) createTriangleLists(width, height, depth int, gridMin, gridMax ve
 		var minIdx [3]int
 		var maxIdx [3]int
 
-		// calculate the min and max indices of the triangle in the grid (with 1 of tolerance)
+		// calculate the min and max indices of the triangle in the grid
 		for i := range 3 {
-			minIdx[i] = int(math32.Round((tMin[i]-gridMin[i])/(gridMax[i]-gridMin[i])*float32(s[i]) - 1.0))
-			maxIdx[i] = int(math32.Round((tMax[i]-gridMin[i])/(gridMax[i]-gridMin[i])*float32(s[i]) + 1.0))
+			minIdx[i] = int(math32.Floor((tMin[i] - gridMin[i]) / (gridMax[i] - gridMin[i]) * float32(s[i])))
+			maxIdx[i] = int(math32.Ceil((tMax[i] - gridMin[i]) / (gridMax[i] - gridMin[i]) * float32(s[i])))
 		}
 
 		for z := vec.Max(0, minIdx[2]); z <= vec.Min(depth-1, maxIdx[2]); z++ {
@@ -285,9 +285,11 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 
 	data := make([]float32, width*height*depth)
 
+	gridSize := vec.Sub(gridMax, gridMin)
+
 	// Minimum and maximum distance values (for normalization)
-	minD = math32.Inf(1)
-	maxD = math32.Inf(-1)
+	minD = math32.Nextafter(0.0, -1.0)
+	maxD = vec.Length(gridSize) * 0.5
 
 	var pointScale, pointBias vec.Vec3
 

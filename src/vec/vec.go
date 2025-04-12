@@ -35,6 +35,10 @@ func Dot2(a Vec3) float32 {
 	return a[0]*a[0] + a[1]*a[1] + a[2]*a[2]
 }
 
+func Length(a Vec3) float32 {
+	return math32.Sqrt(Dot2(a))
+}
+
 func Cross(a, b Vec3) Vec3 {
 	return Vec3{a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]}
 }

@@ -162,7 +162,7 @@ func main() {
 	fmt.Printf("Output resolution: %d x %d x %d\n", w, h, d)
 
 	if (w * h * d) > sizeLimit {
-		fmt.Printf("Output size is too big, maximum allowed is %d.\n", sizeLimit)
+		fmt.Printf("Output size is too big, maximum allowed is %d bytes.\n", sizeLimit)
 		return
 	}
 
