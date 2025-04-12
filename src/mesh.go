@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/chewxy/math32"
 
@@ -98,11 +99,10 @@ func (m *Mesh) createTriangleLists(width, height, depth int, gridMin, gridMax ve
 		var minIdx [3]int
 		var maxIdx [3]int
 
+		// calculate the min and max indices of the triangle in the grid (with 1 of tolerance)
 		for i := range 3 {
-			// adding a bit of tolerance because of rounding errors, and
-			// corners that are further away than the adjacent blocks
-			minIdx[i] = int(math32.Round((tMin[i]-gridMin[i])/(gridMax[i]-gridMin[i])*float32(s[i])) - 1)
-			maxIdx[i] = int(math32.Round((tMax[i]-gridMin[i])/(gridMax[i]-gridMin[i])*float32(s[i])) + 1)
+			minIdx[i] = int(math32.Round((tMin[i]-gridMin[i])/(gridMax[i]-gridMin[i])*float32(s[i]) - 1.0))
+			maxIdx[i] = int(math32.Round((tMax[i]-gridMin[i])/(gridMax[i]-gridMin[i])*float32(s[i]) + 1.0))
 		}
 
 		for z := vec.Max(0, minIdx[2]); z <= vec.Min(depth-1, maxIdx[2]); z++ {
@@ -208,13 +208,13 @@ func distance(p, a, b, c vec.Vec3) float32 {
 	if vec.Sign(vec.Dot(vec.Cross(ba, n), pa))+
 		vec.Sign(vec.Dot(vec.Cross(cb, n), pa))+
 		vec.Sign(vec.Dot(vec.Cross(ac, n), pa)) < 2.0 {
-		return sign * math32.Sqrt(vec.Min3(
+		return math32.Copysign(math32.Sqrt(vec.Min3(
 			vec.Dot2(vec.Sub(vec.Scale(ba, vec.Saturate(vec.Dot(ba, pa)/vec.Dot2(ba))), pa)),
 			vec.Dot2(vec.Sub(vec.Scale(cb, vec.Saturate(vec.Dot(cb, pb)/vec.Dot2(cb))), pb)),
-			vec.Dot2(vec.Sub(vec.Scale(ac, vec.Saturate(vec.Dot(ac, pc)/vec.Dot2(ac))), pc))))
+			vec.Dot2(vec.Sub(vec.Scale(ac, vec.Saturate(vec.Dot(ac, pc)/vec.Dot2(ac))), pc)))), sign)
 	}
 
-	return sign * math32.Sqrt((vec.Dot(n, pa) * vec.Dot(n, pa) / vec.Dot2(n)))
+	return math32.Copysign(math32.Sqrt((vec.Dot(n, pa) * vec.Dot(n, pa) / vec.Dot2(n))), sign)
 }
 
 /*
@@ -292,6 +292,7 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 	var pointScale, pointBias vec.Vec3
 
 	// Calculate scale and bias for each axis
+	// TODO: mirror modes!
 	/*if settings.convertionOptions&convertionOptionsMirrorX == convertionOptionsMirrorX {
 		if settings.convertionOptions&convertionOptionsMirrorXIncludeCenter == convertionOptionsMirrorXIncludeCenter {
 			// ...
@@ -308,7 +309,6 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 		pointBias[0] = mesh.Min[0]
 	}*/
 
-	// mesh should have an half texel border to avoid artifacts at the edges
 	pointScale[0] = (gridMax[0] - gridMin[0]) / float32(width-1)
 	pointBias[0] = gridMin[0]
 
@@ -321,7 +321,10 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	fmt.Println("Calculating distance field...")
+	fmt.Println("Calculating distance field:")
+
+	progress := int32(0)
+	progressStep := int32(width * height * depth / 100)
 
 	for z := range depth {
 		wg.Add(1)
@@ -331,6 +334,11 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 
 			for y := range height {
 				for x := range width {
+					if progress%progressStep == 0 {
+						fmt.Printf("\r%d%%", progress/progressStep)
+					}
+					atomic.AddInt32(&progress, 1)
+
 					p := vec.Add(vec.Mul(vec.Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
 					d := mesh.distanceUsingList(p, width, height, depth, x, y, z, triangleLists)
 					data[x+y*width+z*width*height] = d
@@ -354,13 +362,12 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 			}
 			mu.Unlock()
 
-			fmt.Printf("finished layer %d out of %d\n", z, depth)
 			wg.Done()
 		}(z)
 	}
 
 	wg.Wait()
-	fmt.Println("...All done.")
+	fmt.Println("\r100%")
 
 	// Create buffer of correct type
 	if settings.convertionOptions&convertionOptions16bits == convertionOptions16bits {
@@ -369,11 +376,12 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 		outputData = make([]byte, len(data))
 	}
 
+	fmt.Println("Converting data:")
 	printStep := len(data) / 100
 
 	for i, v := range data {
 		if i%printStep == 0 {
-			fmt.Printf("\rConverting data:\t%d%%", i/printStep)
+			fmt.Printf("\r%d%%", i/printStep)
 		}
 
 		negative := v < 0.0
@@ -400,7 +408,7 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 		}
 	}
 
-	fmt.Println("\rConverting data:\t100%")
+	fmt.Println("\r100%")
 
 	return outputData, minD, maxD
 }
