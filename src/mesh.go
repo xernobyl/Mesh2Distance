@@ -23,6 +23,11 @@ type Mesh struct {
 	Max       vec.Vec3 // Bounding box top corner
 }
 
+var posBigFloat32 = math32.Nextafter(math32.Inf(1.0), -1.0)
+var negBigFloat32 = math32.Nextafter(math32.Inf(-1.0), 1.0)
+var posSmallFloat32 = math32.Nextafter(0.0, 1.0)
+var negSmallFloat32 = math32.Nextafter(0.0, -1.0)
+
 // Calculate other dimensions in case only one is given, using cubic
 // texels, because there's no clear advantage to using square textures,
 // and add 0.5 texels on each side of the mesh to avoid artifacts.
@@ -127,8 +132,8 @@ func LoadOBJ(filepath string) (*Mesh, error) {
 	defer file.Close()
 
 	model := &Mesh{
-		Min: vec.Vec3{math32.Inf(1), math32.Inf(1), math32.Inf(1)},
-		Max: vec.Vec3{math32.Inf(-1), math32.Inf(-1), math32.Inf(-1)},
+		Min: vec.Vec3{posBigFloat32, posBigFloat32, posBigFloat32},
+		Max: vec.Vec3{negBigFloat32, negBigFloat32, negBigFloat32},
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -224,11 +229,10 @@ func (m Mesh) distanceUsingList(p vec.Vec3, width, height, depth, ix, iy, iz int
 	visitedTriangles := map[int]struct{}{}
 	foundTriangles := false
 	layer := 0
-	minDistance := math32.Inf(1)
+	minDistance := posBigFloat32
 	checkedTriangles := 0
 
 	// if triangles are found in the layer then we won't find closer triangles on the next layers
-
 	for !foundTriangles {
 		for zz := vec.Max(0, int(iz)-layer); zz <= vec.Min(int(iz)+layer, int(depth-1)); zz++ {
 			for yy := vec.Max(0, int(iy)-layer); yy <= vec.Min(int(iy)+layer, int(height-1)); yy++ {
@@ -285,11 +289,9 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 
 	data := make([]float32, width*height*depth)
 
-	gridSize := vec.Sub(gridMax, gridMin)
-
 	// Minimum and maximum distance values (for normalization)
-	minD = math32.Nextafter(0.0, -1.0)
-	maxD = vec.Length(gridSize) * 0.5
+	minD = negSmallFloat32
+	maxD = posSmallFloat32
 
 	var pointScale, pointBias vec.Vec3
 
@@ -331,8 +333,8 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 	for z := range depth {
 		wg.Add(1)
 		go func(z int) {
-			minDi := math32.Inf(1)
-			maxDi := math32.Inf(-1)
+			minDi := negSmallFloat32
+			maxDi := posSmallFloat32
 
 			for y := range height {
 				for x := range width {
@@ -369,6 +371,12 @@ func calculate(settings distanceSettings, mesh Mesh, gridMin, gridMax vec.Vec3) 
 	}
 
 	wg.Wait()
+
+	// Clamp the min and max distance values to the size of the grid
+	maxSize := 0.5 * vec.Length(vec.Sub(gridMax, gridMin))
+	minD = vec.Max(minD, -maxSize)
+	maxD = vec.Min(maxD, maxSize)
+
 	fmt.Println("\r100%")
 
 	// Create buffer of correct type
