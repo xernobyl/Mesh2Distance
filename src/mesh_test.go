@@ -3,7 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/chewxy/math32"
+	"math"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/xernobyl/mesh2distance/src/vec"
 )
@@ -13,8 +14,8 @@ Signed distance from point p to closest point on mesh,
 using brute force method.
 Use to compare with the list method.
 */
-func (mesh Mesh) distanceBruteForce(p vec.Vec3) float32 {
-	minDistance := math32.Inf(1)
+func (mesh Mesh) distanceBruteForce(p vec.Vec3) float64 {
+	minDistance := math.Inf(1)
 
 	for _, triangle := range mesh.Triangles {
 		v0 := mesh.Vertices[triangle[0]]
@@ -27,7 +28,7 @@ func (mesh Mesh) distanceBruteForce(p vec.Vec3) float32 {
 			return 0.0
 		}
 
-		if math32.Abs(d) < math32.Abs(minDistance) {
+		if math.Abs(d) < math.Abs(minDistance) {
 			minDistance = d
 		}
 	}
@@ -36,24 +37,24 @@ func (mesh Mesh) distanceBruteForce(p vec.Vec3) float32 {
 }
 
 func TestDistance(t *testing.T) {
-	a := vec.Vec3{0.0, 1.0, -1.0}
-	b := vec.Vec3{0.0, -1.0, -1.0}
-	c := vec.Vec3{0.0, 0.0, 1.0}
+	a := vec.Vec3{0.0, 1235.0, -167.0}
+	b := vec.Vec3{0.0, -1432.0, -165.0}
+	c := vec.Vec3{0.0, 0.0, 643.0}
 
 	p := vec.Vec3{-1.0, 0, 0}
 	d0 := distance(p, a, b, c)
 	d1 := distance(p, b, a, c)
 
 	assert.Equal(t, -d0, d1) // distance should be symmetric
-	assert.Equal(t, float32(-1.095445), d0)
+	assert.Equal(t, float64(-1.095445), d0)
 
 	p = vec.Vec3{0.0, 1.0, -1.0}
 	d0 = distance(p, b, a, c)
-	assert.Equal(t, float32(0.0), d0)
+	assert.Equal(t, float64(0.0), d0)
 
 	p = vec.Vec3{0.0, 3.0, -1.0}
 	d0 = distance(p, b, a, c)
-	assert.Equal(t, float32(2.0), d0)
+	assert.Equal(t, float64(2.0), d0)
 }
 
 func TestLoadOBJ(t *testing.T) {
@@ -100,19 +101,19 @@ func TestTriangleList(t *testing.T) {
 
 	var pointScale, pointBias vec.Vec3
 
-	pointScale[0] = (mesh.Max[0] - mesh.Min[0]) / float32(width-1)
+	pointScale[0] = (mesh.Max[0] - mesh.Min[0]) / float64(width-1)
 	pointBias[0] = mesh.Min[0]
 
-	pointScale[1] = (mesh.Max[1] - mesh.Min[1]) / float32(height-1)
+	pointScale[1] = (mesh.Max[1] - mesh.Min[1]) / float64(height-1)
 	pointBias[1] = mesh.Min[1]
 
-	pointScale[2] = (mesh.Max[2] - mesh.Min[2]) / float32(depth-1)
+	pointScale[2] = (mesh.Max[2] - mesh.Min[2]) / float64(depth-1)
 	pointBias[2] = mesh.Min[2]
 
 	for z := range depth {
 		for y := range height {
 			for x := range width {
-				p := vec.Add(vec.Mul(vec.Vec3{float32(x), float32(y), float32(z)}, pointScale), pointBias)
+				p := vec.Add(vec.Mul(vec.Vec3{float64(x), float64(y), float64(z)}, pointScale), pointBias)
 
 				d0 := mesh.distanceBruteForce(p)
 				d1 := mesh.distanceUsingList(p, width, height, depth, x, y, z, triangleLists)

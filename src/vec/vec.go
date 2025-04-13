@@ -5,11 +5,12 @@ A simple math vector library... New functions added as needed.
 package vec
 
 import (
-	"github.com/chewxy/math32"
+	"math"
+
 	"golang.org/x/exp/constraints"
 )
 
-type Vec3 [3]float32
+type Vec3 [3]float64
 
 func Add(a, b Vec3) Vec3 {
 	return Vec3{a[0] + b[0], a[1] + b[1], a[2] + b[2]}
@@ -19,7 +20,7 @@ func Sub(a, b Vec3) Vec3 {
 	return Vec3{a[0] - b[0], a[1] - b[1], a[2] - b[2]}
 }
 
-func Dot(a, b Vec3) float32 {
+func Dot(a, b Vec3) float64 {
 	return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
 }
 
@@ -27,23 +28,23 @@ func Mul(a, b Vec3) Vec3 {
 	return Vec3{a[0] * b[0], a[1] * b[1], a[2] * b[2]}
 }
 
-func Scale(a Vec3, b float32) Vec3 {
+func Scale(a Vec3, b float64) Vec3 {
 	return Vec3{a[0] * b, a[1] * b, a[2] * b}
 }
 
-func Dot2(a Vec3) float32 {
+func Dot2(a Vec3) float64 {
 	return a[0]*a[0] + a[1]*a[1] + a[2]*a[2]
 }
 
-func Length(a Vec3) float32 {
-	return math32.Sqrt(Dot2(a))
+func Length(a Vec3) float64 {
+	return math.Sqrt(Dot2(a))
 }
 
 func Cross(a, b Vec3) Vec3 {
 	return Vec3{a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]}
 }
 
-func Sign(a float32) float32 {
+func Sign(a float64) float64 {
 	if a > 0.0 {
 		return 1.0
 	}
@@ -56,7 +57,7 @@ func Sign(a float32) float32 {
 }
 
 func Normalize(a Vec3) Vec3 {
-	l := math32.Sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2])
+	l := math.Sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2])
 	return Vec3{a[0] / l, a[1] / l, a[2] / l}
 }
 
